@@ -11,9 +11,9 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Discord Events", "MON@H", "1.3.3")]
-    [Description("Displays events to a discord channel")]
-    class DiscordEvents : RustPlugin
+    [Info("Discord Logger", "MON@H", "2.0.1")]
+    [Description("Logs events to Discord channels using webhooks")]
+    class DiscordLogger : RustPlugin
     {
         #region Variables
 
@@ -69,7 +69,7 @@ namespace Oxide.Plugins
             {
                 LogToConsole("Server is online again!");
 
-                SendMessage(Lang(LangKeys.Event.Initialized), _configData.ServerStateSettings.WebhookURL);
+                DiscordSendMessage(Lang(LangKeys.Event.Initialized), _configData.ServerStateSettings.WebhookURL);
             }
 
             SubscribeHooks();
@@ -149,6 +149,9 @@ namespace Oxide.Plugins
 
             [JsonProperty(PropertyName = "NTeleportation settings")]
             public EventSettings NTeleportationSettings = new EventSettings();
+
+            [JsonProperty(PropertyName = "Permissions settings")]
+            public EventSettings PermissionsSettings = new EventSettings();
 
             [JsonProperty(PropertyName = "Player death settings")]
             public EventSettings PlayerDeathSettings = new EventSettings();
@@ -237,6 +240,9 @@ namespace Oxide.Plugins
             [JsonProperty(PropertyName = "Queue cooldown if connection error (seconds)")]
             public float QueueCooldown = 60f;
 
+            [JsonProperty(PropertyName = "Default WebhookURL")]
+            public string DefaultWebhookURL = string.Empty;
+
             [JsonProperty(PropertyName = "RCON command blacklist", ObjectCreationHandling = ObjectCreationHandling.Replace)]
             public List<string> RCONCommandBlacklist = new List<string>()
             {
@@ -304,10 +310,6 @@ namespace Oxide.Plugins
             public static class Event
             {
                 private const string Base = nameof(Event) + ".";
-                public const string AdminHammerOff = Base + nameof(AdminHammerOff);
-                public const string AdminHammerOn = Base + nameof(AdminHammerOn);
-                public const string AdminRadarOff = Base + nameof(AdminRadarOff);
-                public const string AdminRadarOn = Base + nameof(AdminRadarOn);
                 public const string Bradley = Base + nameof(Bradley);
                 public const string CargoPlane = Base + nameof(CargoPlane);
                 public const string CargoShip = Base + nameof(CargoShip);
@@ -315,34 +317,20 @@ namespace Oxide.Plugins
                 public const string ChatTeam = Base + nameof(ChatTeam);
                 public const string Chinook = Base + nameof(Chinook);
                 public const string Christmas = Base + nameof(Christmas);
-                public const string ClanCreated = Base + nameof(ClanCreated);
-                public const string ClanDisbanded = Base + nameof(ClanDisbanded);
-                public const string DangerousTreasuresEnded = Base + nameof(DangerousTreasuresEnded);
-                public const string DangerousTreasuresStarted = Base + nameof(DangerousTreasuresStarted);
                 public const string Death = Base + nameof(Death);
-                public const string DeathNotes = Base + nameof(DeathNotes);
-                public const string Duel = Base + nameof(Duel);
                 public const string Easter = Base + nameof(Easter);
                 public const string EasterWinner = Base + nameof(EasterWinner);
-                public const string GodmodeOff = Base + nameof(GodmodeOff);
-                public const string GodmodeOn = Base + nameof(GodmodeOn);
                 public const string Halloween = Base + nameof(Halloween);
                 public const string HalloweenWinner = Base + nameof(HalloweenWinner);
                 public const string Helicopter = Base + nameof(Helicopter);
                 public const string Initialized = Base + nameof(Initialized);
                 public const string LockedCrate = Base + nameof(LockedCrate);
-                public const string NTeleportation = Base + nameof(NTeleportation);
-                public const string PersonalHelicopter = Base + nameof(PersonalHelicopter);
                 public const string PlayerConnected = Base + nameof(PlayerConnected);
                 public const string PlayerConnectedInfo = Base + nameof(PlayerConnectedInfo);
                 public const string PlayerDisconnected = Base + nameof(PlayerDisconnected);
                 public const string PlayerRespawned = Base + nameof(PlayerRespawned);
-                public const string PrivateMessage = Base + nameof(PrivateMessage);
-                public const string RaidableBaseEnded = Base + nameof(RaidableBaseEnded);
-                public const string RaidableBaseStarted = Base + nameof(RaidableBaseStarted);
                 public const string RconCommand = Base + nameof(RconCommand);
                 public const string RconConnection = Base + nameof(RconConnection);
-                public const string RustKits = Base + nameof(RustKits);
                 public const string SantaSleigh = Base + nameof(SantaSleigh);
                 public const string ServerMessage = Base + nameof(ServerMessage);
                 public const string Shutdown = Base + nameof(Shutdown);
@@ -355,6 +343,44 @@ namespace Oxide.Plugins
                 public const string UserNameUpdated = Base + nameof(UserNameUpdated);
                 public const string UserUnbanned = Base + nameof(UserUnbanned);
                 public const string UserUnmuted = Base + nameof(UserUnmuted);
+            }
+
+            public static class Permission
+            {
+                private const string Base = nameof(Permission) + ".";
+                public const string GroupCreated = Base + nameof(GroupCreated);
+                public const string GroupDeleted = Base + nameof(GroupDeleted);
+                public const string UserGroupAdded = Base + nameof(UserGroupAdded);
+                public const string UserGroupRemoved = Base + nameof(UserGroupRemoved);
+                public const string UserPermissionGranted = Base + nameof(UserPermissionGranted);
+                public const string UserPermissionRevoked = Base + nameof(UserPermissionRevoked);
+            }
+
+            public static class Plugin
+            {
+                private const string Base = nameof(Plugin) + ".";
+                public const string AdminHammerOff = Base + nameof(AdminHammerOff);
+                public const string AdminHammerOn = Base + nameof(AdminHammerOn);
+                public const string AdminRadarOff = Base + nameof(AdminRadarOff);
+                public const string AdminRadarOn = Base + nameof(AdminRadarOn);
+                public const string ClanCreated = Base + nameof(ClanCreated);
+                public const string ClanDisbanded = Base + nameof(ClanDisbanded);
+                public const string DangerousTreasuresEnded = Base + nameof(DangerousTreasuresEnded);
+                public const string DangerousTreasuresStarted = Base + nameof(DangerousTreasuresStarted);
+                public const string DeathNotes = Base + nameof(DeathNotes);
+                public const string Duel = Base + nameof(Duel);
+                public const string GodmodeOff = Base + nameof(GodmodeOff);
+                public const string GodmodeOn = Base + nameof(GodmodeOn);
+                public const string NTeleportation = Base + nameof(NTeleportation);
+                public const string PersonalHelicopter = Base + nameof(PersonalHelicopter);
+                public const string PrivateMessage = Base + nameof(PrivateMessage);
+                public const string RaidableBaseEnded = Base + nameof(RaidableBaseEnded);
+                public const string RaidableBaseStarted = Base + nameof(RaidableBaseStarted);
+                public const string RustKits = Base + nameof(RustKits);
+                public const string TimedGroupAdded = Base + nameof(TimedGroupAdded);
+                public const string TimedGroupExtended = Base + nameof(TimedGroupExtended);
+                public const string TimedPermissionExtended = Base + nameof(TimedPermissionExtended);
+                public const string TimedPermissionGranted = Base + nameof(TimedPermissionGranted);
                 public const string VanishOff = Base + nameof(VanishOff);
                 public const string VanishOn = Base + nameof(VanishOn);
             }
@@ -362,11 +388,19 @@ namespace Oxide.Plugins
             public static class Format
             {
                 private const string Base = nameof(Format) + ".";
+                public const string Day = Base + nameof(Day);
+                public const string Days = Base + nameof(Days);
                 public const string Easy = Base + nameof(Easy);
                 public const string Expert = Base + nameof(Expert);
                 public const string Hard = Base + nameof(Hard);
+                public const string Hour = Base + nameof(Hour);
+                public const string Hours = Base + nameof(Hours);
                 public const string Medium = Base + nameof(Medium);
+                public const string Minute = Base + nameof(Minute);
+                public const string Minutes = Base + nameof(Minutes);
                 public const string Nightmare = Base + nameof(Nightmare);
+                public const string Second = Base + nameof(Second);
+                public const string Seconds = Base + nameof(Seconds);
             }
         }
 
@@ -374,10 +408,8 @@ namespace Oxide.Plugins
         {
             lang.RegisterMessages(new Dictionary<string, string>
             {
-                [LangKeys.Event.AdminHammerOff] = ":hammer: {time} AdminHammer enabled by `{0}`",
-                [LangKeys.Event.AdminHammerOn] = ":hammer: {time} AdminHammer disabled by `{0}`",
-                [LangKeys.Event.AdminRadarOff] = ":compass: {time} Admin Radar enabled by `{0}`",
-                [LangKeys.Event.AdminRadarOn] = ":compass: {time} Admin Radar disabled by `{0}`",
+                [LangKeys.Event.Bradley] = ":dagger: {time} Bradley spawned `{0}`",
+                [LangKeys.Event.Bradley] = ":dagger: {time} Bradley spawned `{0}`",
                 [LangKeys.Event.Bradley] = ":dagger: {time} Bradley spawned `{0}`",
                 [LangKeys.Event.CargoPlane] = ":airplane: {time} Cargo Plane incoming `{0}`",
                 [LangKeys.Event.CargoShip] = ":ship: {time} Cargo Ship incoming `{0}`",
@@ -385,34 +417,20 @@ namespace Oxide.Plugins
                 [LangKeys.Event.ChatTeam] = ":busts_in_silhouette: {time} **{0}**: {1}",
                 [LangKeys.Event.Chinook] = ":helicopter: {time} Chinook 47 incoming `{0}`",
                 [LangKeys.Event.Christmas] = ":christmas_tree: {time} Christmas event started",
-                [LangKeys.Event.ClanCreated] = ":family_mwgb: {time} **{0}** clan was created",
-                [LangKeys.Event.ClanDisbanded] = ":family_mwgb: {time} **{0}** clan was disbanded",
-                [LangKeys.Event.DangerousTreasuresEnded] = ":pirate_flag: {time} Dangerous Treasures event at `{0}` is ended",
-                [LangKeys.Event.DangerousTreasuresStarted] = ":pirate_flag: {time} Dangerous Treasures started at `{0}`",
                 [LangKeys.Event.Death] = ":skull: {time} `{0}` died",
-                [LangKeys.Event.DeathNotes] = ":skull_crossbones: {time} {0}",
-                [LangKeys.Event.Duel] = ":crossed_swords: {time} `{0}` has defeated `{1}` in a duel",
                 [LangKeys.Event.Easter] = ":egg: {time} Easter event started",
                 [LangKeys.Event.EasterWinner] = ":egg: {time} Easter event ended. The winner is `{0}`",
-                [LangKeys.Event.GodmodeOff] = ":angel: {time} Godmode disabled for `{0}`",
-                [LangKeys.Event.GodmodeOn] = ":angel: {time} Godmode enabled for `{0}`",
                 [LangKeys.Event.Halloween] = ":jack_o_lantern: {time} Halloween event started",
                 [LangKeys.Event.HalloweenWinner] = ":jack_o_lantern: {time} Halloween event ended. The winner is `{0}`",
                 [LangKeys.Event.Helicopter] = ":dagger: {time} Helicopter incoming `{0}`",
                 [LangKeys.Event.Initialized] = ":ballot_box_with_check: {time} Server is online again!",
                 [LangKeys.Event.LockedCrate] = ":package: {time} Codelocked crate is here `{0}`",
-                [LangKeys.Event.NTeleportation] = ":cyclone: {time} `{0}` teleported from `{1}` `{2}` to `{3}` `{4}`",
-                [LangKeys.Event.PersonalHelicopter] = ":dagger: {time} Personal Helicopter incoming `{0}`",
                 [LangKeys.Event.PlayerConnected] = ":white_check_mark: {time} {0} connected",
                 [LangKeys.Event.PlayerConnectedInfo] = ":detective: {time} {0} connected. SteamID: `{1}` IP: `{2}`",
                 [LangKeys.Event.PlayerDisconnected] = ":x: {time} {0} disconnected ({1})",
                 [LangKeys.Event.PlayerRespawned] = ":baby_symbol: {time} `{0}` has been spawned at `{1}`",
-                [LangKeys.Event.PrivateMessage] = ":envelope: {time} PM from `{0}` to `{1}`: {2}",
-                [LangKeys.Event.RaidableBaseEnded] = ":homes: {time} {1} Raidable Base at `{0}` is ended",
-                [LangKeys.Event.RaidableBaseStarted] = ":homes: {time} {1} Raidable Base spawned at `{0}`",
                 [LangKeys.Event.RconCommand] = ":satellite: {time} RCON command `{0}` is run from `{1}`",
                 [LangKeys.Event.RconConnection] = ":satellite: {time} RCON connection is opened from `{0}`",
-                [LangKeys.Event.RustKits] = ":shopping_bags: {time} `{0}` redeemed a kit `{1}`",
                 [LangKeys.Event.SantaSleigh] = ":santa: {time} SantaSleigh Event started",
                 [LangKeys.Event.ServerMessage] = ":desktop: {time} `{0}`",
                 [LangKeys.Event.Shutdown] = ":stop_sign: {time} Server is shutting down!",
@@ -425,14 +443,49 @@ namespace Oxide.Plugins
                 [LangKeys.Event.UserNameUpdated] = ":label: {time} `{0}` changed name to `{1}` SteamID: `{2}`",
                 [LangKeys.Event.UserUnbanned] = ":ok: {time} Player `{0}` SteamID: `{1}` IP: `{2}` was unbanned",
                 [LangKeys.Event.UserUnmuted] = ":speaker: {time} `{0}` was unmuted `{1}`",
-                [LangKeys.Event.VanishOff] = ":ghost: {time} Vanish: Disabled for `{0}`",
-                [LangKeys.Event.VanishOn] = ":ghost: {time} Vanish: Enabled for `{0}`",
-
+                [LangKeys.Format.Day] = "day",
+                [LangKeys.Format.Days] = "days",
                 [LangKeys.Format.Easy] = "Easy",
-                [LangKeys.Format.Medium] = "Medium",
-                [LangKeys.Format.Hard] = "Hard",
                 [LangKeys.Format.Expert] = "Expert",
-                [LangKeys.Format.Nightmare] = "Nightmare"
+                [LangKeys.Format.Hard] = "Hard",
+                [LangKeys.Format.Hour] = "hour",
+                [LangKeys.Format.Hours] = "hours",
+                [LangKeys.Format.Medium] = "Medium",
+                [LangKeys.Format.Minute] = "minute",
+                [LangKeys.Format.Minutes] = "minutes",
+                [LangKeys.Format.Nightmare] = "Nightmare",
+                [LangKeys.Format.Second] = "second",
+                [LangKeys.Format.Seconds] = "seconds",
+                [LangKeys.Permission.GroupCreated] = ":family: {time} Group `{0}` has been created",
+                [LangKeys.Permission.GroupDeleted] = ":family: {time} Group `{0}` has been deleted",
+                [LangKeys.Permission.UserGroupAdded] = ":family: {time} `{0}` `{1}` is added to group `{2}`",
+                [LangKeys.Permission.UserGroupRemoved] = ":family: {time} `{0}` `{1}` is removed from group `{2}`",
+                [LangKeys.Permission.UserPermissionGranted] = ":key: {time} `{0}` `{1}` is granted `{2}`",
+                [LangKeys.Permission.UserPermissionRevoked] = ":key: {time} `{0}` `{1}` is revoked `{2}`",
+                [LangKeys.Plugin.AdminHammerOff] = ":hammer: {time} AdminHammer enabled by `{0}`",
+                [LangKeys.Plugin.AdminHammerOn] = ":hammer: {time} AdminHammer disabled by `{0}`",
+                [LangKeys.Plugin.AdminRadarOff] = ":compass: {time} Admin Radar enabled by `{0}`",
+                [LangKeys.Plugin.AdminRadarOn] = ":compass: {time} Admin Radar disabled by `{0}`",
+                [LangKeys.Plugin.ClanCreated] = ":family_mwgb: {time} **{0}** clan was created",
+                [LangKeys.Plugin.ClanDisbanded] = ":family_mwgb: {time} **{0}** clan was disbanded",
+                [LangKeys.Plugin.DangerousTreasuresEnded] = ":pirate_flag: {time} Dangerous Treasures event at `{0}` is ended",
+                [LangKeys.Plugin.DangerousTreasuresStarted] = ":pirate_flag: {time} Dangerous Treasures started at `{0}`",
+                [LangKeys.Plugin.DeathNotes] = ":skull_crossbones: {time} {0}",
+                [LangKeys.Plugin.Duel] = ":crossed_swords: {time} `{0}` has defeated `{1}` in a duel",
+                [LangKeys.Plugin.GodmodeOff] = ":angel: {time} Godmode disabled for `{0}`",
+                [LangKeys.Plugin.GodmodeOn] = ":angel: {time} Godmode enabled for `{0}`",
+                [LangKeys.Plugin.NTeleportation] = ":cyclone: {time} `{0}` teleported from `{1}` `{2}` to `{3}` `{4}`",
+                [LangKeys.Plugin.PersonalHelicopter] = ":dagger: {time} Personal Helicopter incoming `{0}`",
+                [LangKeys.Plugin.PrivateMessage] = ":envelope: {time} PM from `{0}` to `{1}`: {2}",
+                [LangKeys.Plugin.RaidableBaseEnded] = ":homes: {time} {1} Raidable Base at `{0}` is ended",
+                [LangKeys.Plugin.RaidableBaseStarted] = ":homes: {time} {1} Raidable Base spawned at `{0}`",
+                [LangKeys.Plugin.RustKits] = ":shopping_bags: {time} `{0}` redeemed a kit `{1}`",
+                [LangKeys.Plugin.TimedGroupAdded] = ":timer: {time} `{0}` `{1}` is added to `{2}` for {3}",
+                [LangKeys.Plugin.TimedGroupExtended] = ":timer: {time} `{0}` `{1}` timed group `{2}` is extended to {3}",
+                [LangKeys.Plugin.TimedPermissionExtended] = ":timer: {time} `{0}` `{1}` timed permission `{2}` is extended to {3}",
+                [LangKeys.Plugin.TimedPermissionGranted] = ":timer: {time} `{0}` `{1}` is granted `{2}` for {3}",
+                [LangKeys.Plugin.VanishOff] = ":ghost: {time} Vanish: Disabled for `{0}`",
+                [LangKeys.Plugin.VanishOn] = ":ghost: {time} Vanish: Enabled for `{0}`",
             }, this);
         }
 
@@ -444,14 +497,14 @@ namespace Oxide.Plugins
         {
             LogToConsole($"AdminHammer enabled by {player.UserIDString} {player.displayName}");
 
-            SendMessage(Lang(LangKeys.Event.AdminHammerOff, null, ReplaceChars(player.displayName)), _configData.AdminHammerSettings.WebhookURL);
+            DiscordSendMessage(Lang(LangKeys.Plugin.AdminHammerOff, null, ReplaceChars(player.displayName)), _configData.AdminHammerSettings.WebhookURL);
         }
 
         private void OnAdminHammerDisabled(BasePlayer player)
         {
             LogToConsole($"AdminHammer disabled by {player.UserIDString} {player.displayName}");
 
-            SendMessage(Lang(LangKeys.Event.AdminHammerOn, null, ReplaceChars(player.displayName)), _configData.AdminHammerSettings.WebhookURL);
+            DiscordSendMessage(Lang(LangKeys.Plugin.AdminHammerOn, null, ReplaceChars(player.displayName)), _configData.AdminHammerSettings.WebhookURL);
         }
 
 
@@ -493,12 +546,12 @@ namespace Oxide.Plugins
 
             LogToConsole($"{player.displayName} died.");
 
-            SendMessage(Lang(LangKeys.Event.Death, null, ReplaceChars(player.displayName)), _configData.PlayerDeathSettings.WebhookURL);
+            DiscordSendMessage(Lang(LangKeys.Event.Death, null, ReplaceChars(player.displayName)), _configData.PlayerDeathSettings.WebhookURL);
         }
 
         private void OnDeathNotice(Dictionary<string, object> data, string message)
         {
-            SendMessage(Lang(LangKeys.Event.DeathNotes, null, StripRustTags(Formatter.ToPlaintext(message))), _configData.PlayerDeathNotesSettings.WebhookURL);
+            DiscordSendMessage(Lang(LangKeys.Plugin.DeathNotes, null, StripRustTags(Formatter.ToPlaintext(message))), _configData.PlayerDeathNotesSettings.WebhookURL);
         }
 
         private void OnEntityKill(EggHuntEvent entity)
@@ -526,7 +579,7 @@ namespace Oxide.Plugins
                 {
                     LogToConsole("Halloween Hunt Event has ended. The winner is " + winner);
 
-                    SendMessage(Lang(LangKeys.Event.HalloweenWinner, null, winner), _configData.HalloweenSettings.WebhookURL);
+                    DiscordSendMessage(Lang(LangKeys.Event.HalloweenWinner, null, winner), _configData.HalloweenSettings.WebhookURL);
                 }
             }
             else
@@ -535,7 +588,7 @@ namespace Oxide.Plugins
                 {
                     LogToConsole("Egg Hunt Event has ended. The winner is " + winner);
 
-                    SendMessage(Lang(LangKeys.Event.EasterWinner, null, winner), _configData.EasterSettings.WebhookURL);
+                    DiscordSendMessage(Lang(LangKeys.Event.EasterWinner, null, winner), _configData.EasterSettings.WebhookURL);
                 }
             }
         }
@@ -548,21 +601,21 @@ namespace Oxide.Plugins
         {
             LogToConsole($"Admin Radar enabled by {player.UserIDString} {player.displayName}");
 
-            SendMessage(Lang(LangKeys.Event.AdminRadarOn, null, ReplaceChars(player.displayName)), _configData.AdminRadarSettings.WebhookURL);
+            DiscordSendMessage(Lang(LangKeys.Plugin.AdminRadarOn, null, ReplaceChars(player.displayName)), _configData.AdminRadarSettings.WebhookURL);
         }
 
         private void OnRadarDeactivated(BasePlayer player)
         {
             LogToConsole($"Admin Radar disabled by {player.UserIDString} {player.displayName}");
 
-            SendMessage(Lang(LangKeys.Event.AdminRadarOff, null, ReplaceChars(player.displayName)), _configData.AdminRadarSettings.WebhookURL);
+            DiscordSendMessage(Lang(LangKeys.Plugin.AdminRadarOff, null, ReplaceChars(player.displayName)), _configData.AdminRadarSettings.WebhookURL);
         }
 
         private void OnRconConnection(IPAddress ip)
         {
             LogToConsole($"RCON connection is opened from {ip}");
 
-            SendMessage(Lang(LangKeys.Event.RconConnection, null, ip.ToString()), _configData.RconConnectionSettings.WebhookURL);
+            DiscordSendMessage(Lang(LangKeys.Event.RconConnection, null, ip.ToString()), _configData.RconConnectionSettings.WebhookURL);
         }
 
         private void OnRconCommand(IPAddress ip, string command, string[] args)
@@ -582,7 +635,7 @@ namespace Oxide.Plugins
 
             LogToConsole($"RCON command {command} is run from {ip}");
 
-            SendMessage(Lang(LangKeys.Event.RconCommand, null, command, ip), _configData.RconCommandSettings.WebhookURL);
+            DiscordSendMessage(Lang(LangKeys.Event.RconCommand, null, command, ip), _configData.RconCommandSettings.WebhookURL);
         }
 
         private void OnSupplyDropLanded(SupplyDrop entity)
@@ -594,7 +647,7 @@ namespace Oxide.Plugins
 
             LogToConsole($"SupplyDrop landed at {GetGridPosition(entity.transform.position)}");
 
-            SendMessage(Lang(LangKeys.Event.SupplyDropLanded, null, GetGridPosition(entity.transform.position)), _configData.SupplyDropSettings.WebhookURL);
+            DiscordSendMessage(Lang(LangKeys.Event.SupplyDropLanded, null, GetGridPosition(entity.transform.position)), _configData.SupplyDropSettings.WebhookURL);
 
             _entityID = entity.net.ID;
 
@@ -612,16 +665,16 @@ namespace Oxide.Plugins
 
             LogToConsole($"{attacker.displayName} has defeated {victim.displayName} in a duel");
 
-            SendMessage(Lang(LangKeys.Event.Duel, null, ReplaceChars(attacker.displayName), ReplaceChars(victim.displayName)), _configData.DuelSettings.WebhookURL);
+            DiscordSendMessage(Lang(LangKeys.Plugin.Duel, null, ReplaceChars(attacker.displayName), ReplaceChars(victim.displayName)), _configData.DuelSettings.WebhookURL);
         }
 
         private void OnRaidableBaseStarted(Vector3 raidPos, int difficulty)
         {
-            HandleRaidableBase(raidPos, difficulty, LangKeys.Event.RaidableBaseStarted);
+            HandleRaidableBase(raidPos, difficulty, LangKeys.Plugin.RaidableBaseStarted);
         }
         private void OnRaidableBaseEnded(Vector3 raidPos, int difficulty)
         {
-            HandleRaidableBase(raidPos, difficulty, LangKeys.Event.RaidableBaseEnded);
+            HandleRaidableBase(raidPos, difficulty, LangKeys.Plugin.RaidableBaseEnded);
         }
 
         private void OnPlayerConnected(BasePlayer player)
@@ -632,13 +685,13 @@ namespace Oxide.Plugins
 
                 if (!_configData.GlobalSettings.HideAdmin || !player.IsAdmin)
                 {
-                    SendMessage(Lang(LangKeys.Event.PlayerConnected, null, ReplaceChars(player.displayName)), _configData.PlayerConnectedSettings.WebhookURL);
+                    DiscordSendMessage(Lang(LangKeys.Event.PlayerConnected, null, ReplaceChars(player.displayName)), _configData.PlayerConnectedSettings.WebhookURL);
                 }
             }
 
             if (_configData.PlayerConnectedInfoSettings.Enabled)
             {
-                SendMessage(Lang(LangKeys.Event.PlayerConnectedInfo, null, ReplaceChars(player.displayName), player.UserIDString, player.net.connection.ipaddress.Split(':')[0]), _configData.PlayerConnectedInfoSettings.WebhookURL);
+                DiscordSendMessage(Lang(LangKeys.Event.PlayerConnectedInfo, null, ReplaceChars(player.displayName), player.UserIDString, player.net.connection.ipaddress.Split(':')[0]), _configData.PlayerConnectedInfoSettings.WebhookURL);
             }
         }
 
@@ -653,7 +706,7 @@ namespace Oxide.Plugins
 
             if (!_configData.GlobalSettings.HideAdmin || !player.IsAdmin)
             {
-                SendMessage(Lang(LangKeys.Event.PlayerDisconnected, null, ReplaceChars(player.displayName), ReplaceChars(reason)), _configData.PlayerDisconnectedSettings.WebhookURL);
+                DiscordSendMessage(Lang(LangKeys.Event.PlayerDisconnected, null, ReplaceChars(player.displayName), ReplaceChars(reason)), _configData.PlayerDisconnectedSettings.WebhookURL);
             }
         }
 
@@ -706,12 +759,12 @@ namespace Oxide.Plugins
 
             if (channel == ConVar.Chat.ChatChannel.Global && _configData.ChatSettings.Enabled)
             {
-                SendMessage(Lang(LangKeys.Event.Chat, null, ReplaceChars(player.displayName), message), _configData.ChatSettings.WebhookURL);
+                DiscordSendMessage(Lang(LangKeys.Event.Chat, null, ReplaceChars(player.displayName), message), _configData.ChatSettings.WebhookURL);
             }
 
             if (channel == ConVar.Chat.ChatChannel.Team && _configData.ChatTeamSettings.Enabled)
             {
-                SendMessage(Lang(LangKeys.Event.ChatTeam, null, ReplaceChars(player.displayName), message), _configData.ChatTeamSettings.WebhookURL);
+                DiscordSendMessage(Lang(LangKeys.Event.ChatTeam, null, ReplaceChars(player.displayName), message), _configData.ChatTeamSettings.WebhookURL);
             }
         }
 
@@ -719,14 +772,14 @@ namespace Oxide.Plugins
         {
             LogToConsole($"NTeleportation {player.UserIDString} {player.displayName} from {oldPosition} to {newPosition}");
 
-            SendMessage(Lang(LangKeys.Event.NTeleportation, null, ReplaceChars(player.displayName), GetGridPosition(oldPosition), oldPosition, GetGridPosition(newPosition), newPosition), _configData.NTeleportationSettings.WebhookURL);
+            DiscordSendMessage(Lang(LangKeys.Plugin.NTeleportation, null, ReplaceChars(player.displayName), GetGridPosition(oldPosition), oldPosition, GetGridPosition(newPosition), newPosition), _configData.NTeleportationSettings.WebhookURL);
         }
 
         private void OnPMProcessed(IPlayer sender, IPlayer target, string message)
         {
             LogToConsole($"PM from `{sender.Name}` to `{target.Name}`: {message}");
 
-            SendMessage(Lang(LangKeys.Event.PrivateMessage, null, ReplaceChars(sender.Name), ReplaceChars(target.Name), ReplaceChars(message)), _configData.PrivateMessagesSettings.WebhookURL);
+            DiscordSendMessage(Lang(LangKeys.Plugin.PrivateMessage, null, ReplaceChars(sender.Name), ReplaceChars(target.Name), ReplaceChars(message)), _configData.PrivateMessagesSettings.WebhookURL);
         }
 
         private void OnPlayerRespawned(BasePlayer player)
@@ -738,65 +791,65 @@ namespace Oxide.Plugins
 
             LogToConsole($"{player.displayName} has been spawned at {GetGridPosition(player.transform.position)}");
 
-            SendMessage(Lang(LangKeys.Event.PlayerRespawned, null, ReplaceChars(player.displayName), GetGridPosition(player.transform.position)), _configData.PlayerRespawnedSettings.WebhookURL);
+            DiscordSendMessage(Lang(LangKeys.Event.PlayerRespawned, null, ReplaceChars(player.displayName), GetGridPosition(player.transform.position)), _configData.PlayerRespawnedSettings.WebhookURL);
         }
 
         private void OnDangerousEventStarted(Vector3 containerPos)
         {
-            HandleDangerousTreasures(containerPos, LangKeys.Event.DangerousTreasuresStarted);
+            HandleDangerousTreasures(containerPos, LangKeys.Plugin.DangerousTreasuresStarted);
         }
         private void OnDangerousEventEnded(Vector3 containerPos)
         {
-            HandleDangerousTreasures(containerPos, LangKeys.Event.DangerousTreasuresEnded);
+            HandleDangerousTreasures(containerPos, LangKeys.Plugin.DangerousTreasuresEnded);
         }
 
         private void OnUserKicked(IPlayer player, string reason)
         {
             LogToConsole($"Player {player.Name} ({player.Id}) was kicked ({reason})");
 
-            SendMessage(Lang(LangKeys.Event.UserKicked, null, ReplaceChars(player.Name), player.Id, ReplaceChars(reason)), _configData.UserKickedSettings.WebhookURL);
+            DiscordSendMessage(Lang(LangKeys.Event.UserKicked, null, ReplaceChars(player.Name), player.Id, ReplaceChars(reason)), _configData.UserKickedSettings.WebhookURL);
         }
 
         private void OnUserBanned(string name, string id, string ipAddress, string reason)
         {
             LogToConsole($"Player {name} ({id}) at {ipAddress} was banned: {reason}");
 
-            SendMessage(Lang(LangKeys.Event.UserBanned, null, ReplaceChars(name), id, ipAddress, ReplaceChars(reason)), _configData.UserBannedSettings.WebhookURL);
+            DiscordSendMessage(Lang(LangKeys.Event.UserBanned, null, ReplaceChars(name), id, ipAddress, ReplaceChars(reason)), _configData.UserBannedSettings.WebhookURL);
         }
 
         private void OnUserUnbanned(string name, string id, string ipAddress)
         {
             LogToConsole($"Player {name} ({id}) at {ipAddress} was unbanned");
 
-            SendMessage(Lang(LangKeys.Event.UserUnbanned, null, ReplaceChars(name), id, ipAddress), _configData.UserBannedSettings.WebhookURL);
+            DiscordSendMessage(Lang(LangKeys.Event.UserUnbanned, null, ReplaceChars(name), id, ipAddress), _configData.UserBannedSettings.WebhookURL);
         }
 
         private void OnBetterChatMuted(IPlayer target, IPlayer initiator, string reason)
         {
             LogToConsole($"{target.Name} was muted by {initiator.Name} for ever ({reason})");
 
-            SendMessage(Lang(LangKeys.Event.UserMuted, null, ReplaceChars(target.Name), ReplaceChars(initiator.Name), "ever", ReplaceChars(reason)), _configData.UserMutedSettings.WebhookURL);
+            DiscordSendMessage(Lang(LangKeys.Event.UserMuted, null, ReplaceChars(target.Name), ReplaceChars(initiator.Name), "ever", ReplaceChars(reason)), _configData.UserMutedSettings.WebhookURL);
         }
 
         private void OnBetterChatMuteExpired(IPlayer player)
         {
             LogToConsole($"{player.Name} was unmuted by SERVER");
 
-            SendMessage(Lang(LangKeys.Event.UserUnmuted, null, ReplaceChars(player.Name), "SERVER"), _configData.UserMutedSettings.WebhookURL);
+            DiscordSendMessage(Lang(LangKeys.Event.UserUnmuted, null, ReplaceChars(player.Name), "SERVER"), _configData.UserMutedSettings.WebhookURL);
         }
 
         private void OnBetterChatTimeMuted(IPlayer target, IPlayer initiator, TimeSpan time, string reason)
         {
             LogToConsole($"{target.Name} was muted by {initiator.Name} for {time.ToShortString()} ({reason})");
 
-            SendMessage(Lang(LangKeys.Event.UserMuted, null, ReplaceChars(target.Name), ReplaceChars(initiator.Name), time.ToShortString(), ReplaceChars(reason)), _configData.UserMutedSettings.WebhookURL);
+            DiscordSendMessage(Lang(LangKeys.Event.UserMuted, null, ReplaceChars(target.Name), ReplaceChars(initiator.Name), time.ToShortString(), ReplaceChars(reason)), _configData.UserMutedSettings.WebhookURL);
         }
 
         private void OnBetterChatUnmuted(IPlayer target, IPlayer initiator)
         {
             LogToConsole($"{target.Name} was unmuted by {initiator.Name}");
 
-            SendMessage(Lang(LangKeys.Event.UserUnmuted, null, ReplaceChars(target.Name), ReplaceChars(initiator.Name)), _configData.UserMutedSettings.WebhookURL);
+            DiscordSendMessage(Lang(LangKeys.Event.UserUnmuted, null, ReplaceChars(target.Name), ReplaceChars(initiator.Name)), _configData.UserMutedSettings.WebhookURL);
         }
 
         private void OnUserNameUpdated(string id, string oldName, string newName)
@@ -808,33 +861,34 @@ namespace Oxide.Plugins
             
             LogToConsole($"Player name changed from {oldName} to {newName} for ID {id}");
 
-            SendMessage(Lang(LangKeys.Event.UserNameUpdated, null, ReplaceChars(oldName), ReplaceChars(newName), id), _configData.UserNameUpdateSettings.WebhookURL);
+            DiscordSendMessage(Lang(LangKeys.Event.UserNameUpdated, null, ReplaceChars(oldName), ReplaceChars(newName), id), _configData.UserNameUpdateSettings.WebhookURL);
         }
 
         private void OnClanCreate(string tag)
         {
             LogToConsole($"{tag} clan was created");
 
-            SendMessage(Lang(LangKeys.Event.ClanCreated, null, ReplaceChars(tag)), _configData.ClanSettings.WebhookURL);
+            DiscordSendMessage(Lang(LangKeys.Plugin.ClanCreated, null, ReplaceChars(tag)), _configData.ClanSettings.WebhookURL);
         }
 
         private void OnClanDisbanded(string tag)
         {
             LogToConsole($"{tag} clan was disbanded");
 
-            SendMessage(Lang(LangKeys.Event.ClanDisbanded, null, ReplaceChars(tag)), _configData.ClanSettings.WebhookURL);
+            DiscordSendMessage(Lang(LangKeys.Plugin.ClanDisbanded, null, ReplaceChars(tag)), _configData.ClanSettings.WebhookURL);
         }
 
         private void OnServerMessage(string message, string name, string color, ulong id)
         {
             LogToConsole($"ServerMessage: {message}");
 
-            SendMessage(Lang(LangKeys.Event.ServerMessage, null, message), _configData.ServerMessagesSettings.WebhookURL);
+            DiscordSendMessage(Lang(LangKeys.Event.ServerMessage, null, message), _configData.ServerMessagesSettings.WebhookURL);
         }
 
-        private void OnGodmodeToggled(string playerId, bool enabled)
+        private void OnGodmodeToggled(string playerID, bool enabled)
         {
-            IPlayer player = covalence.Players.FindPlayerById(playerId);
+            IPlayer player = covalence.Players.FindPlayerById(playerID);
+
             if (player == null)
             {
                 return;
@@ -844,36 +898,166 @@ namespace Oxide.Plugins
             {
                 LogToConsole($"Godmode disabled for {player.Id} {player.Name}");
 
-                SendMessage(Lang(LangKeys.Event.GodmodeOn, null, ReplaceChars(player.Name)), _configData.GodmodeSettings.WebhookURL);
+                DiscordSendMessage(Lang(LangKeys.Plugin.GodmodeOn, null, ReplaceChars(player.Name)), _configData.GodmodeSettings.WebhookURL);
 
                 return;
             }
 
             LogToConsole($"Godmode enabled for {player.Id} {player.Name}");
 
-            SendMessage(Lang(LangKeys.Event.GodmodeOff, null, ReplaceChars(player.Name)), _configData.GodmodeSettings.WebhookURL);
+            DiscordSendMessage(Lang(LangKeys.Plugin.GodmodeOff, null, ReplaceChars(player.Name)), _configData.GodmodeSettings.WebhookURL);
         }
 
         private void OnKitRedeemed(BasePlayer player, string kitName)
         {
             LogToConsole($"{player.UserIDString} {player.displayName} redeemed a kit {kitName}");
 
-            SendMessage(Lang(LangKeys.Event.RustKits, null, ReplaceChars(player.displayName), ReplaceChars(kitName)), _configData.RustKitsSettings.WebhookURL);
+            DiscordSendMessage(Lang(LangKeys.Plugin.RustKits, null, ReplaceChars(player.displayName), ReplaceChars(kitName)), _configData.RustKitsSettings.WebhookURL);
         }
 
         private void OnVanishDisappear(BasePlayer player)
         {
             LogToConsole($"Vanish: Enabled ({player.UserIDString} {player.displayName})");
 
-            SendMessage(Lang(LangKeys.Event.VanishOn, null, ReplaceChars(player.displayName)), _configData.VanishSettings.WebhookURL);
+            DiscordSendMessage(Lang(LangKeys.Plugin.VanishOn, null, ReplaceChars(player.displayName)), _configData.VanishSettings.WebhookURL);
         }
 
         private void OnVanishReappear(BasePlayer player)
         {
             LogToConsole($"Vanish: Disabled ({player.UserIDString} {player.displayName})");
 
-            SendMessage(Lang(LangKeys.Event.VanishOff, null, ReplaceChars(player.displayName)), _configData.VanishSettings.WebhookURL);
+            DiscordSendMessage(Lang(LangKeys.Plugin.VanishOff, null, ReplaceChars(player.displayName)), _configData.VanishSettings.WebhookURL);
         }
+
+        #region Permissions
+
+        private void OnGroupCreated(string name)
+        {
+            LogToConsole($"Group {name} has been created");
+
+            DiscordSendMessage(Lang(LangKeys.Permission.GroupCreated, null, name), _configData.PermissionsSettings.WebhookURL);
+        }
+
+        private void OnGroupDeleted(string name)
+        {
+            LogToConsole($"Group {name} has been deleted");
+
+            DiscordSendMessage(Lang(LangKeys.Permission.GroupDeleted, null, name), _configData.PermissionsSettings.WebhookURL);
+        }
+
+        private void OnTimedPermissionGranted(string playerID, string permission, TimeSpan duration)
+        {
+            IPlayer player = covalence.Players.FindPlayerById(playerID);
+
+            if (player == null)
+            {
+                return;
+            }
+
+            LogToConsole($"{playerID} {player.Name} is granted {permission} for {duration}");
+
+            DiscordSendMessage(Lang(LangKeys.Plugin.TimedPermissionGranted, null, playerID, ReplaceChars(player.Name), permission, GetFormattedDurationTime(duration)), _configData.PermissionsSettings.WebhookURL);
+        }
+
+        private void OnTimedPermissionExtended(string playerID, string permission, TimeSpan duration)
+        {
+            IPlayer player = covalence.Players.FindPlayerById(playerID);
+
+            if (player == null)
+            {
+                return;
+            }
+
+            LogToConsole($"{playerID} {player.Name} timed permission {permission} is extended for {duration}");
+
+            DiscordSendMessage(Lang(LangKeys.Plugin.TimedPermissionExtended, null, playerID, ReplaceChars(player.Name), permission, GetFormattedDurationTime(duration)), _configData.PermissionsSettings.WebhookURL);
+        }
+
+        private void OnTimedGroupAdded(string playerID, string group, TimeSpan duration)
+        {
+            IPlayer player = covalence.Players.FindPlayerById(playerID);
+
+            if (player == null)
+            {
+                return;
+            }
+
+            LogToConsole($"{playerID} {player.Name} is added to {group} for {duration}");
+
+            DiscordSendMessage(Lang(LangKeys.Plugin.TimedGroupAdded, null, playerID, ReplaceChars(player.Name), group, GetFormattedDurationTime(duration)), _configData.PermissionsSettings.WebhookURL);
+        }
+
+        private void OnTimedGroupExtended(string playerID, string group, TimeSpan duration)
+        {
+            IPlayer player = covalence.Players.FindPlayerById(playerID);
+
+            if (player == null)
+            {
+                return;
+            }
+
+            LogToConsole($"{playerID} {player.Name} timed group {group} is extended for {duration}");
+
+            DiscordSendMessage(Lang(LangKeys.Plugin.TimedGroupExtended, null, playerID, ReplaceChars(player.Name), group, GetFormattedDurationTime(duration)), _configData.PermissionsSettings.WebhookURL);
+        }
+
+        private void OnUserGroupAdded(string playerID, string groupName)
+        {
+            IPlayer player = covalence.Players.FindPlayerById(playerID);
+
+            if (player == null)
+            {
+                return;
+            }
+
+            LogToConsole($"{playerID} {player.Name} is added to group {groupName}");
+
+            DiscordSendMessage(Lang(LangKeys.Permission.UserGroupAdded, null, playerID, ReplaceChars(player.Name), groupName), _configData.PermissionsSettings.WebhookURL);
+        }
+
+        private void OnUserGroupRemoved(string playerID, string groupName)
+        {
+            IPlayer player = covalence.Players.FindPlayerById(playerID);
+
+            if (player == null)
+            {
+                return;
+            }
+
+            LogToConsole($"{playerID} {player.Name} is removed from group {groupName}");
+
+            DiscordSendMessage(Lang(LangKeys.Permission.UserGroupRemoved, null, playerID, ReplaceChars(player.Name), groupName), _configData.PermissionsSettings.WebhookURL);
+        }
+
+        private void OnUserPermissionGranted(string playerID, string permName)
+        {
+            IPlayer player = covalence.Players.FindPlayerById(playerID);
+
+            if (player == null)
+            {
+                return;
+            }
+
+            LogToConsole($"{playerID} {player.Name} is granted permission {permName}");
+
+            DiscordSendMessage(Lang(LangKeys.Permission.UserPermissionGranted, null, playerID, ReplaceChars(player.Name), permName), _configData.PermissionsSettings.WebhookURL);
+        }
+
+        private void OnUserPermissionRevoked(string playerID, string permName)
+        {
+            IPlayer player = covalence.Players.FindPlayerById(playerID);
+
+            if (player == null)
+            {
+                return;
+            }
+
+            LogToConsole($"{playerID} {player.Name} is revoked permission {permName}");
+
+            DiscordSendMessage(Lang(LangKeys.Permission.UserPermissionRevoked, null, playerID, ReplaceChars(player.Name), permName), _configData.PermissionsSettings.WebhookURL);
+        }
+
+        #endregion
 
         #endregion Events Hooks
 
@@ -898,11 +1082,16 @@ namespace Oxide.Plugins
             return _sb.ToString();
         }
 
-        private void SendMessage(string message, string webhookUrl, bool stripTags = false)
+        private void DiscordSendMessage(string message, string webhookUrl, bool stripTags = false)
         {
             if (string.IsNullOrWhiteSpace(webhookUrl))
             {
-                PrintError("SendMessage: webhookUrl is null or empty!");
+                webhookUrl = _configData.GlobalSettings.DefaultWebhookURL;
+            }
+
+            if (string.IsNullOrWhiteSpace(webhookUrl))
+            {
+                PrintError("DiscordSendMessage: webhookUrl is null or empty!");
                 return;
             }
 
@@ -913,7 +1102,7 @@ namespace Oxide.Plugins
 
             if (string.IsNullOrWhiteSpace(message))
             {
-                PrintError("SendMessage: message is null or empty!");
+                PrintError("DiscordSendMessage: message is null or empty!");
                 return;
             }
 
@@ -1070,7 +1259,7 @@ namespace Oxide.Plugins
                         {
                             LogToConsole("Personal Helicopter spawned at " + GetGridPosition(baseEntity.transform.position));
 
-                            SendMessage(Lang(LangKeys.Event.PersonalHelicopter, null, GetGridPosition(baseEntity.transform.position)), _eventSettings.WebhookURL);
+                            DiscordSendMessage(Lang(LangKeys.Plugin.PersonalHelicopter, null, GetGridPosition(baseEntity.transform.position)), _eventSettings.WebhookURL);
                             return;
                         }
                     }
@@ -1081,7 +1270,7 @@ namespace Oxide.Plugins
                         {
                             LogToConsole("Personal Helicopter spawned at " + GetGridPosition(baseEntity.transform.position));
 
-                            SendMessage(Lang(LangKeys.Event.PersonalHelicopter, null, GetGridPosition(baseEntity.transform.position)), _eventSettings.WebhookURL);
+                            DiscordSendMessage(Lang(LangKeys.Plugin.PersonalHelicopter, null, GetGridPosition(baseEntity.transform.position)), _eventSettings.WebhookURL);
                             return;
                         }
                     }
@@ -1089,7 +1278,7 @@ namespace Oxide.Plugins
                     LogToConsole("BaseHelicopter spawned at " + GetGridPosition(baseEntity.transform.position));
                 }
 
-                SendMessage(Lang(_langKey, null, GetGridPosition(baseEntity.transform.position)), _eventSettings.WebhookURL);
+                DiscordSendMessage(Lang(_langKey, null, GetGridPosition(baseEntity.transform.position)), _eventSettings.WebhookURL);
             }
         }
 
@@ -1102,7 +1291,7 @@ namespace Oxide.Plugins
                     {
                         LogToConsole($"SupplySignal was thrown by {player.displayName} at {GetGridPosition(entity.transform.position)}");
 
-                        SendMessage(Lang(LangKeys.Event.SupplySignal, null, ReplaceChars(player.displayName), GetGridPosition(entity.transform.position)), _configData.SupplyDropSettings.WebhookURL);
+                        DiscordSendMessage(Lang(LangKeys.Event.SupplySignal, null, ReplaceChars(player.displayName), GetGridPosition(entity.transform.position)), _configData.SupplyDropSettings.WebhookURL);
                     }
                 });
             }
@@ -1139,9 +1328,9 @@ namespace Oxide.Plugins
                     return;
             }
 
-            LogToConsole(difficultyString + " Raidable Base at " + GetGridPosition(raidPos) + " is " + (langKey == LangKeys.Event.RaidableBaseStarted ? "spawned" : "ended"));
+            LogToConsole(difficultyString + " Raidable Base at " + GetGridPosition(raidPos) + " is " + (langKey == LangKeys.Plugin.RaidableBaseStarted ? "spawned" : "ended"));
 
-            SendMessage(Lang(langKey, null, GetGridPosition(raidPos), Lang(difficultyString)), _configData.RaidableBasesSettings.WebhookURL);
+            DiscordSendMessage(Lang(langKey, null, GetGridPosition(raidPos), Lang(difficultyString)), _configData.RaidableBasesSettings.WebhookURL);
         }
 
         private void HandleDangerousTreasures(Vector3 containerPos, string langKey)
@@ -1152,9 +1341,9 @@ namespace Oxide.Plugins
                 return;
             }
 
-            LogToConsole("Dangerous Treasures at " + GetGridPosition(containerPos) + " is " + (langKey == LangKeys.Event.DangerousTreasuresStarted ? "spawned" : "ended"));
+            LogToConsole("Dangerous Treasures at " + GetGridPosition(containerPos) + " is " + (langKey == LangKeys.Plugin.DangerousTreasuresStarted ? "spawned" : "ended"));
 
-            SendMessage(Lang(langKey, null, GetGridPosition(containerPos)), _configData.DangerousTreasuresSettings.WebhookURL);
+            DiscordSendMessage(Lang(langKey, null, GetGridPosition(containerPos)), _configData.DangerousTreasuresSettings.WebhookURL);
         }
 
         #endregion Methods
@@ -1181,6 +1370,8 @@ namespace Oxide.Plugins
             Unsubscribe(nameof(OnExplosiveDropped));
             Unsubscribe(nameof(OnExplosiveThrown));
             Unsubscribe(nameof(OnGodmodeToggled));
+            Unsubscribe(nameof(OnGroupCreated));
+            Unsubscribe(nameof(OnGroupDeleted));
             Unsubscribe(nameof(OnKitRedeemed));
             Unsubscribe(nameof(OnPlayerChat));
             Unsubscribe(nameof(OnPlayerConnected));
@@ -1196,9 +1387,17 @@ namespace Oxide.Plugins
             Unsubscribe(nameof(OnRconConnection));
             Unsubscribe(nameof(OnServerMessage));
             Unsubscribe(nameof(OnSupplyDropLanded));
+            Unsubscribe(nameof(OnTimedGroupAdded));
+            Unsubscribe(nameof(OnTimedGroupExtended));
+            Unsubscribe(nameof(OnTimedPermissionExtended));
+            Unsubscribe(nameof(OnTimedPermissionGranted));
             Unsubscribe(nameof(OnUserBanned));
+            Unsubscribe(nameof(OnUserGroupAdded));
+            Unsubscribe(nameof(OnUserGroupRemoved));
             Unsubscribe(nameof(OnUserKicked));
             Unsubscribe(nameof(OnUserNameUpdated));
+            Unsubscribe(nameof(OnUserPermissionGranted));
+            Unsubscribe(nameof(OnUserPermissionRevoked));
             Unsubscribe(nameof(OnUserUnbanned));
             Unsubscribe(nameof(OnVanishDisappear));
             Unsubscribe(nameof(OnVanishReappear));
@@ -1283,6 +1482,20 @@ namespace Oxide.Plugins
             if (_configData.RustKitsSettings.Enabled)
             {
                 Subscribe(nameof(OnKitRedeemed));
+            }
+
+            if (_configData.PermissionsSettings.Enabled)
+            {
+                Subscribe(nameof(OnGroupCreated));
+                Subscribe(nameof(OnGroupDeleted));
+                Subscribe(nameof(OnTimedGroupAdded));
+                Subscribe(nameof(OnTimedGroupExtended));
+                Subscribe(nameof(OnTimedPermissionExtended));
+                Subscribe(nameof(OnTimedPermissionGranted));
+                Subscribe(nameof(OnUserGroupAdded));
+                Subscribe(nameof(OnUserGroupRemoved));
+                Subscribe(nameof(OnUserPermissionGranted));
+                Subscribe(nameof(OnUserPermissionRevoked));
             }
 
             if (_configData.PlayerConnectedSettings.Enabled
@@ -1389,6 +1602,40 @@ namespace Oxide.Plugins
 
         private string GetGridPosition(Vector3 position) => PhoneController.PositionToGridCoord(position);
 
+        private string GetFormattedDurationTime(TimeSpan time, string id = null)
+        {
+            _sb.Clear();
+
+            if (time.Days > 0)
+            {
+                BuildTime(_sb, time.Days == 1 ? LangKeys.Format.Day : LangKeys.Format.Days, id, time.Days);
+            }
+
+            if (time.Hours > 0)
+            {
+                BuildTime(_sb, time.Hours == 1 ? LangKeys.Format.Hour : LangKeys.Format.Hours, id, time.Hours);
+            }
+
+            if (time.Minutes > 0)
+            {
+                BuildTime(_sb, time.Minutes == 1 ? LangKeys.Format.Minute : LangKeys.Format.Minutes, id, time.Minutes);
+            }
+
+            BuildTime(_sb, time.Seconds == 1 ? LangKeys.Format.Second : LangKeys.Format.Seconds, id, time.Seconds);
+
+            return _sb.ToString();
+        }
+
+        private void BuildTime(StringBuilder sb, string lang, string playerID, int value)
+        {
+            sb.Append(_configData.GlobalSettings.TagsReplacement);
+            sb.Append(value);
+            sb.Append(_configData.GlobalSettings.TagsReplacement);
+            sb.Append(" ");
+            sb.Append(Lang(lang, playerID));
+            sb.Append(" ");
+        }
+
         private bool IsPluginLoaded(Plugin plugin) => plugin != null && plugin.IsLoaded;
 
         private void LogToConsole(string text)
@@ -1451,28 +1698,14 @@ namespace Oxide.Plugins
         private class DiscordMessage
         {
             /// <summary>
-            /// The name of the user sending the message changing this will change the webhook bots name
-            /// </summary>
-            [JsonProperty("username")]
-            private string Username { get; set; }
-
-            /// <summary>
-            /// The avatar url of the user sending the message changing this will change the webhook bots avatar
-            /// </summary>
-            [JsonProperty("avatar_url")]
-            private string AvatarUrl { get; set; }
-
-            /// <summary>
             /// String only content to be sent
             /// </summary>
             [JsonProperty("content")]
             private string Content { get; set; }
 
-            public DiscordMessage(string content, string username = null, string avatarUrl = null)
+            public DiscordMessage(string content)
             {
                 Content = content;
-                Username = username;
-                AvatarUrl = avatarUrl;
             }
 
             /// <summary>
@@ -1487,16 +1720,13 @@ namespace Oxide.Plugins
             }
 
             /// <summary>
-            /// Changes the username and avatar image for the bot sending the message
+            /// Returns string content of the message
             /// </summary>
-            /// <param name="username">username to change</param>
-            /// <param name="avatarUrl">avatar img url to change</param>
-            /// <returns>This</returns>
-            public DiscordMessage AddSender(string username, string avatarUrl)
+            /// <param name="content"></param>
+            /// <returns></returns>
+            public string GetContent()
             {
-                Username = username;
-                AvatarUrl = avatarUrl;
-                return this;
+                return Content;
             }
 
             /// <summary>
