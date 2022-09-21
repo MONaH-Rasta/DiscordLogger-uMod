@@ -9,7 +9,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Discord Events", "MON@H", "1.2.1")]
+    [Info("Discord Events", "MON@H", "1.2.3")]
     [Description("Displays events to a discord channel")]
     class DiscordEvents : CovalencePlugin
     {
@@ -165,6 +165,9 @@ namespace Oxide.Plugins
             [JsonProperty(PropertyName = "Player disconnect settings")]
             public EventSettings PlayerDisconnectedSettings = new EventSettings();
 
+            [JsonProperty(PropertyName = "Player Respawned settings")]
+            public EventSettings PlayerRespawnedSettings = new EventSettings();
+
             [JsonProperty(PropertyName = "Raidable Bases settings")]
             public EventSettings RaidableBasesSettings = new EventSettings();
 
@@ -263,6 +266,7 @@ namespace Oxide.Plugins
                 ["PlayerConnected"] = ":white_check_mark: {0} connected",
                 ["PlayerConnectedInfo"] = ":detective: {0} connected. SteamID: `{1}` IP: `{2}`",
                 ["PlayerDisconnected"] = ":x: {0} disconnected ({1})",
+                ["PlayerRespawned"] = ":baby_symbol: `{0}` has been spawned at `{1}`",
                 ["RaidableBaseEnded"] = ":homes: {1} Raidable Base at `{0}` is ended",
                 ["RaidableBaseStarted"] = ":homes: {1} Raidable Base spawned at `{0}`",
                 ["SantaSleigh"] = ":santa: SantaSleigh Event started",
@@ -529,6 +533,19 @@ namespace Oxide.Plugins
             }
         }
 
+        void OnPlayerRespawned(BasePlayer player)
+        {
+            if (_configData.PlayerRespawnedSettings.Enabled && player != null)
+            {
+                if (_configData.GlobalSettings.LoggingEnabled)
+                {
+                    Puts($"{player.displayName} has been spawned at {GetGridPosition(player.transform.position)}");
+                }
+
+                SendMessage(Lang("PlayerRespawned", null, player.displayName, GetGridPosition(player.transform.position)), _configData.PlayerRespawnedSettings.WebhookURL);
+            }
+        }
+
         private void OnDangerousEventStarted(Vector3 containerPos)
         {
             HandleDangerousTreasures(containerPos, "DangerousTreasuresStarted");
@@ -538,7 +555,7 @@ namespace Oxide.Plugins
             HandleDangerousTreasures(containerPos, "DangerousTreasuresEnded");
         }
 
-        void OnUserKicked(IPlayer player, string reason)
+        private void OnUserKicked(IPlayer player, string reason)
         {            
             if (_configData.UserKickedSettings.Enabled)
             {
@@ -551,7 +568,7 @@ namespace Oxide.Plugins
             }
         }
 
-        void OnUserBanned(string name, string id, string ipAddress, string reason)
+        private void OnUserBanned(string name, string id, string ipAddress, string reason)
         {            
             if (_configData.UserBannedSettings.Enabled)
             {
@@ -564,7 +581,7 @@ namespace Oxide.Plugins
             }
         }
 
-        void OnUserUnbanned(string name, string id, string ipAddress)
+        private void OnUserUnbanned(string name, string id, string ipAddress)
         {            
             if (_configData.UserBannedSettings.Enabled)
             {
@@ -577,9 +594,9 @@ namespace Oxide.Plugins
             }
         }
 
-        void OnUserNameUpdated(string id, string oldName, string newName)
+        private void OnUserNameUpdated(string id, string oldName, string newName)
         {
-            if (!oldName.Equals(newName) && _configData.UserNameUpdateSettings.Enabled)
+            if (_configData.UserNameUpdateSettings.Enabled && !oldName.Equals(newName) && !oldName.Equals("Unnamed"))
             {
                 if (_configData.GlobalSettings.LoggingEnabled)
                 {
@@ -850,6 +867,11 @@ namespace Oxide.Plugins
                 Unsubscribe(nameof(OnPlayerDisconnected));
             }
 
+            if (!_configData.PlayerRespawnedSettings.Enabled)
+            {
+                Unsubscribe(nameof(OnPlayerRespawned));
+            }
+
             if (!_configData.RaidableBasesSettings.Enabled)
             {
                 Unsubscribe(nameof(OnRaidableBaseEnded));
@@ -966,20 +988,7 @@ namespace Oxide.Plugins
 
         private string GetGridPosition(Vector3 pos)
         {
-            const float gridCellSize = 146.3f;
-
-            int maxGridSize = Mathf.FloorToInt(World.Size / gridCellSize) - 1;
-            float halfWorldSize = World.Size / 2f;
-            int xGrid = Mathf.Clamp(Mathf.FloorToInt((pos.x + halfWorldSize) / gridCellSize),0, maxGridSize);
-            int zGrid = Mathf.Clamp(maxGridSize - Mathf.FloorToInt((pos.z + halfWorldSize) / gridCellSize),0, maxGridSize);
-
-            string extraA = string.Empty;
-            if (xGrid > 26)
-            {
-                extraA = $"{(char) ('A' + (xGrid / 26 - 1))}";
-            }
-
-            return $"{extraA}{(char) ('A' + xGrid % 26)}{zGrid.ToString()}";
+            return PhoneController.PositionToGridCoord(pos);
         }
 
         #endregion Helpers
