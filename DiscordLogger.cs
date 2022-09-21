@@ -11,7 +11,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Discord Logger", "MON@H", "2.0.4")]
+    [Info("Discord Logger", "MON@H", "2.0.10")]
     [Description("Logs events to Discord channels using webhooks")]
     class DiscordLogger : RustPlugin
     {
@@ -23,16 +23,16 @@ namespace Oxide.Plugins
         private readonly List<uint> _listSupplyDrops = new List<uint>();
         private readonly StringBuilder _sb = new StringBuilder();
 
-        private bool _isConnectionOK = true;
-        private uint _entityID;
-        private string[] _profanities;
-        private string _langKey;
+        private int _retryCount = 0;
         private EventSettings _eventSettings;
+        private object _resultCall;
+        private QueuedMessage _nextMessage;
+        private QueuedMessage _queuedMessage;
+        private string _langKey;
+        private string[] _profanities;
         private Timer _timerQueue;
         private Timer _timerQueueCooldown;
-        private QueuedMessage _queuedMessage;
-        private QueuedMessage _nextMessage;
-        private object _resultCall;
+        private uint _entityID;
 
         private readonly List<Regex> _regexTags = new List<Regex>
         {
@@ -56,6 +56,13 @@ namespace Oxide.Plugins
             public string Message {set; get;}
         }
 
+        private enum TeamEventType
+        {
+            Created,
+            Disbanded,
+            Updated,
+        }
+
         #endregion Variables
 
         #region Initialization
@@ -63,6 +70,11 @@ namespace Oxide.Plugins
         private void Init()
         {
             UnsubscribeHooks();
+        }
+
+        private void Unload()
+        {
+            Application.logMessageReceivedThreaded -= HandleLog;
         }
 
         private void OnServerInitialized(bool isStartup)
@@ -145,6 +157,9 @@ namespace Oxide.Plugins
             [JsonProperty(PropertyName = "Easter settings")]
             public EventSettings EasterSettings = new EventSettings();
 
+            [JsonProperty(PropertyName = "Error settings")]
+            public EventSettings ErrorSettings = new EventSettings();
+
             [JsonProperty(PropertyName = "Hackable Locked Crate settings")]
             public EventSettings LockedCrateSettings = new EventSettings();
 
@@ -204,6 +219,9 @@ namespace Oxide.Plugins
 
             [JsonProperty(PropertyName = "Supply Drop settings")]
             public EventSettings SupplyDropSettings = new EventSettings();
+
+            [JsonProperty(PropertyName = "Teams settings")]
+            public EventSettings TeamsSettings = new EventSettings();
 
             [JsonProperty(PropertyName = "User Banned settings")]
             public EventSettings UserBannedSettings = new EventSettings();
@@ -327,6 +345,7 @@ namespace Oxide.Plugins
                 public const string Death = Base + nameof(Death);
                 public const string Easter = Base + nameof(Easter);
                 public const string EasterWinner = Base + nameof(EasterWinner);
+                public const string Error = Base + nameof(Error);
                 public const string Halloween = Base + nameof(Halloween);
                 public const string HalloweenWinner = Base + nameof(HalloweenWinner);
                 public const string Helicopter = Base + nameof(Helicopter);
@@ -344,6 +363,7 @@ namespace Oxide.Plugins
                 public const string SupplyDrop = Base + nameof(SupplyDrop);
                 public const string SupplyDropLanded = Base + nameof(SupplyDropLanded);
                 public const string SupplySignal = Base + nameof(SupplySignal);
+                public const string Team = Base + nameof(Team);
                 public const string UserBanned = Base + nameof(UserBanned);
                 public const string UserKicked = Base + nameof(UserKicked);
                 public const string UserMuted = Base + nameof(UserMuted);
@@ -395,8 +415,10 @@ namespace Oxide.Plugins
             public static class Format
             {
                 private const string Base = nameof(Format) + ".";
+                public const string Created = Base + nameof(Created);
                 public const string Day = Base + nameof(Day);
                 public const string Days = Base + nameof(Days);
+                public const string Disbanded = Base + nameof(Disbanded);
                 public const string Easy = Base + nameof(Easy);
                 public const string Expert = Base + nameof(Expert);
                 public const string Hard = Base + nameof(Hard);
@@ -408,6 +430,7 @@ namespace Oxide.Plugins
                 public const string Nightmare = Base + nameof(Nightmare);
                 public const string Second = Base + nameof(Second);
                 public const string Seconds = Base + nameof(Seconds);
+                public const string Updated = Base + nameof(Updated);
             }
         }
 
@@ -415,8 +438,6 @@ namespace Oxide.Plugins
         {
             lang.RegisterMessages(new Dictionary<string, string>
             {
-                [LangKeys.Event.Bradley] = ":dagger: {time} Bradley spawned `{0}`",
-                [LangKeys.Event.Bradley] = ":dagger: {time} Bradley spawned `{0}`",
                 [LangKeys.Event.Bradley] = ":dagger: {time} Bradley spawned `{0}`",
                 [LangKeys.Event.CargoPlane] = ":airplane: {time} Cargo Plane incoming `{0}`",
                 [LangKeys.Event.CargoShip] = ":ship: {time} Cargo Ship incoming `{0}`",
@@ -427,6 +448,7 @@ namespace Oxide.Plugins
                 [LangKeys.Event.Death] = ":skull: {time} `{0}` died",
                 [LangKeys.Event.Easter] = ":egg: {time} Easter event started",
                 [LangKeys.Event.EasterWinner] = ":egg: {time} Easter event ended. The winner is `{0}`",
+                [LangKeys.Event.Error] = ":octagonal_sign: {time}\n{0}",
                 [LangKeys.Event.Halloween] = ":jack_o_lantern: {time} Halloween event started",
                 [LangKeys.Event.HalloweenWinner] = ":jack_o_lantern: {time} Halloween event ended. The winner is `{0}`",
                 [LangKeys.Event.Helicopter] = ":dagger: {time} Helicopter incoming `{0}`",
@@ -438,6 +460,7 @@ namespace Oxide.Plugins
                 [LangKeys.Event.PlayerRespawned] = ":baby_symbol: {time} `{0}` has been spawned at `{1}`",
                 [LangKeys.Event.RconCommand] = ":satellite: {time} RCON command `{0}` is run from `{1}`",
                 [LangKeys.Event.RconConnection] = ":satellite: {time} RCON connection is opened from `{0}`",
+                [LangKeys.Event.Team] = ":family_man_girl_boy: {time} Team was `{0}`\n{1}",
                 [LangKeys.Event.SantaSleigh] = ":santa: {time} SantaSleigh Event started",
                 [LangKeys.Event.ServerMessage] = ":desktop: {time} `{0}`",
                 [LangKeys.Event.Shutdown] = ":stop_sign: {time} Server is shutting down!",
@@ -450,8 +473,10 @@ namespace Oxide.Plugins
                 [LangKeys.Event.UserNameUpdated] = ":label: {time} `{0}` changed name to `{1}` SteamID: `{2}`",
                 [LangKeys.Event.UserUnbanned] = ":ok: {time} Player `{0}` SteamID: `{1}` IP: `{2}` was unbanned",
                 [LangKeys.Event.UserUnmuted] = ":speaker: {time} `{0}` was unmuted `{1}`",
+                [LangKeys.Format.Created] = "created",
                 [LangKeys.Format.Day] = "day",
                 [LangKeys.Format.Days] = "days",
+                [LangKeys.Format.Disbanded] = "disbanded",
                 [LangKeys.Format.Easy] = "Easy",
                 [LangKeys.Format.Expert] = "Expert",
                 [LangKeys.Format.Hard] = "Hard",
@@ -463,6 +488,7 @@ namespace Oxide.Plugins
                 [LangKeys.Format.Nightmare] = "Nightmare",
                 [LangKeys.Format.Second] = "second",
                 [LangKeys.Format.Seconds] = "seconds",
+                [LangKeys.Format.Updated] = "updated",
                 [LangKeys.Permission.GroupCreated] = ":family: {time} Group `{0}` has been created",
                 [LangKeys.Permission.GroupDeleted] = ":family: {time} Group `{0}` has been deleted",
                 [LangKeys.Permission.UserGroupAdded] = ":family: {time} `{0}` `{1}` is added to group `{2}`",
@@ -514,7 +540,74 @@ namespace Oxide.Plugins
             DiscordSendMessage(Lang(LangKeys.Plugin.AdminHammerOn, null, ReplaceChars(player.displayName)), _configData.AdminHammerSettings.WebhookURL);
         }
 
+        private void OnBetterChatMuted(IPlayer target, IPlayer initiator, string reason)
+        {
+            LogToConsole($"{target.Name} was muted by {initiator.Name} for ever ({reason})");
 
+            DiscordSendMessage(Lang(LangKeys.Event.UserMuted, null, ReplaceChars(target.Name), ReplaceChars(initiator.Name), "ever", ReplaceChars(reason)), _configData.UserMutedSettings.WebhookURL);
+        }
+
+        private void OnBetterChatMuteExpired(IPlayer player)
+        {
+            LogToConsole($"{player.Name} was unmuted by SERVER");
+
+            DiscordSendMessage(Lang(LangKeys.Event.UserUnmuted, null, ReplaceChars(player.Name), "SERVER"), _configData.UserMutedSettings.WebhookURL);
+        }
+
+        private void OnBetterChatTimeMuted(IPlayer target, IPlayer initiator, TimeSpan time, string reason)
+        {
+            LogToConsole($"{target.Name} was muted by {initiator.Name} for {time.ToShortString()} ({reason})");
+
+            DiscordSendMessage(Lang(LangKeys.Event.UserMuted, null, ReplaceChars(target.Name), ReplaceChars(initiator.Name), time.ToShortString(), ReplaceChars(reason)), _configData.UserMutedSettings.WebhookURL);
+        }
+
+        private void OnBetterChatUnmuted(IPlayer target, IPlayer initiator)
+        {
+            LogToConsole($"{target.Name} was unmuted by {initiator.Name}");
+
+            DiscordSendMessage(Lang(LangKeys.Event.UserUnmuted, null, ReplaceChars(target.Name), ReplaceChars(initiator.Name)), _configData.UserMutedSettings.WebhookURL);
+        }
+
+        private void OnClanCreate(string tag)
+        {
+            LogToConsole($"{tag} clan was created");
+
+            DiscordSendMessage(Lang(LangKeys.Plugin.ClanCreated, null, ReplaceChars(tag)), _configData.ClanSettings.WebhookURL);
+        }
+
+        private void OnClanDisbanded(string tag)
+        {
+            LogToConsole($"{tag} clan was disbanded");
+
+            DiscordSendMessage(Lang(LangKeys.Plugin.ClanDisbanded, null, ReplaceChars(tag)), _configData.ClanSettings.WebhookURL);
+        }
+
+        private void OnDangerousEventStarted(Vector3 containerPos)
+        {
+            HandleDangerousTreasures(containerPos, LangKeys.Plugin.DangerousTreasuresStarted);
+        }
+
+        private void OnDangerousEventEnded(Vector3 containerPos)
+        {
+            HandleDangerousTreasures(containerPos, LangKeys.Plugin.DangerousTreasuresEnded);
+        }
+
+        private void OnDeathNotice(Dictionary<string, object> data, string message)
+        {
+            DiscordSendMessage(Lang(LangKeys.Plugin.DeathNotes, null, StripRustTags(Formatter.ToPlaintext(message))), _configData.PlayerDeathNotesSettings.WebhookURL);
+        }
+
+        private void OnDuelistDefeated(BasePlayer attacker, BasePlayer victim)
+        {
+            if (attacker == null || victim == null)
+            {
+                return;
+            }
+
+            LogToConsole($"{attacker.displayName} has defeated {victim.displayName} in a duel");
+
+            DiscordSendMessage(Lang(LangKeys.Plugin.Duel, null, ReplaceChars(attacker.displayName), ReplaceChars(victim.displayName)), _configData.DuelSettings.WebhookURL);
+        }
 
         private void OnEntitySpawned(BaseHelicopter entity)
         {
@@ -554,11 +647,6 @@ namespace Oxide.Plugins
             LogToConsole($"{player.displayName} died.");
 
             DiscordSendMessage(Lang(LangKeys.Event.Death, null, ReplaceChars(player.displayName)), _configData.PlayerDeathSettings.WebhookURL);
-        }
-
-        private void OnDeathNotice(Dictionary<string, object> data, string message)
-        {
-            DiscordSendMessage(Lang(LangKeys.Plugin.DeathNotes, null, StripRustTags(Formatter.ToPlaintext(message))), _configData.PlayerDeathNotesSettings.WebhookURL);
         }
 
         private void OnEntityKill(EggHuntEvent entity)
@@ -604,84 +692,27 @@ namespace Oxide.Plugins
 
         private void OnExplosiveDropped(BasePlayer player, SupplySignal entity) => HandleSupplySignal(player, entity);
 
-        private void OnRadarActivated(BasePlayer player)
+        private void OnGodmodeToggled(string playerID, bool enabled)
         {
-            LogToConsole($"Admin Radar enabled by {player.UserIDString} {player.displayName}");
+            IPlayer player = covalence.Players.FindPlayerById(playerID);
 
-            DiscordSendMessage(Lang(LangKeys.Plugin.AdminRadarOn, null, ReplaceChars(player.displayName)), _configData.AdminRadarSettings.WebhookURL);
-        }
-
-        private void OnRadarDeactivated(BasePlayer player)
-        {
-            LogToConsole($"Admin Radar disabled by {player.UserIDString} {player.displayName}");
-
-            DiscordSendMessage(Lang(LangKeys.Plugin.AdminRadarOff, null, ReplaceChars(player.displayName)), _configData.AdminRadarSettings.WebhookURL);
-        }
-
-        private void OnRconConnection(IPAddress ip)
-        {
-            LogToConsole($"RCON connection is opened from {ip}");
-
-            DiscordSendMessage(Lang(LangKeys.Event.RconConnection, null, ip.ToString()), _configData.RconConnectionSettings.WebhookURL);
-        }
-
-        private void OnRconCommand(IPAddress ip, string command, string[] args)
-        {
-            foreach (string rconCommand in _configData.GlobalSettings.RCONCommandBlacklist)
-            {
-                if (command.ToLower().Equals(rconCommand.ToLower()))
-                {
-                    return;
-                }
-            }
-
-            for (int i = 0; i < args.Length; i++)
-            {
-                command += $" {args[i]}";
-            }
-
-            LogToConsole($"RCON command {command} is run from {ip}");
-
-            DiscordSendMessage(Lang(LangKeys.Event.RconCommand, null, command, ip), _configData.RconCommandSettings.WebhookURL);
-        }
-
-        private void OnSupplyDropLanded(SupplyDrop entity)
-        {
-            if (entity == null || _listSupplyDrops.Contains(entity.net.ID))
+            if (player == null)
             {
                 return;
             }
 
-            LogToConsole($"SupplyDrop landed at {GetGridPosition(entity.transform.position)}");
-
-            DiscordSendMessage(Lang(LangKeys.Event.SupplyDropLanded, null, GetGridPosition(entity.transform.position)), _configData.SupplyDropSettings.WebhookURL);
-
-            _entityID = entity.net.ID;
-
-            _listSupplyDrops.Add(_entityID);
-
-            timer.Once(60f, () => _listSupplyDrops.Remove(_entityID));
-        }
-
-        private void OnDuelistDefeated(BasePlayer attacker, BasePlayer victim)
-        {
-            if (attacker == null || victim == null)
+            if (enabled)
             {
+                LogToConsole($"Godmode disabled for {player.Id} {player.Name}");
+
+                DiscordSendMessage(Lang(LangKeys.Plugin.GodmodeOn, null, ReplaceChars(player.Name)), _configData.GodmodeSettings.WebhookURL);
+
                 return;
             }
 
-            LogToConsole($"{attacker.displayName} has defeated {victim.displayName} in a duel");
+            LogToConsole($"Godmode enabled for {player.Id} {player.Name}");
 
-            DiscordSendMessage(Lang(LangKeys.Plugin.Duel, null, ReplaceChars(attacker.displayName), ReplaceChars(victim.displayName)), _configData.DuelSettings.WebhookURL);
-        }
-
-        private void OnRaidableBaseStarted(Vector3 raidPos, int difficulty)
-        {
-            HandleRaidableBase(raidPos, difficulty, LangKeys.Plugin.RaidableBaseStarted);
-        }
-        private void OnRaidableBaseEnded(Vector3 raidPos, int difficulty)
-        {
-            HandleRaidableBase(raidPos, difficulty, LangKeys.Plugin.RaidableBaseEnded);
+            DiscordSendMessage(Lang(LangKeys.Plugin.GodmodeOff, null, ReplaceChars(player.Name)), _configData.GodmodeSettings.WebhookURL);
         }
 
         private void OnPlayerConnected(BasePlayer player)
@@ -810,20 +841,73 @@ namespace Oxide.Plugins
             DiscordSendMessage(Lang(LangKeys.Event.PlayerRespawned, null, ReplaceChars(player.displayName), GetGridPosition(player.transform.position)), _configData.PlayerRespawnedSettings.WebhookURL);
         }
 
-        private void OnDangerousEventStarted(Vector3 containerPos)
+        private void OnRadarActivated(BasePlayer player)
         {
-            HandleDangerousTreasures(containerPos, LangKeys.Plugin.DangerousTreasuresStarted);
-        }
-        private void OnDangerousEventEnded(Vector3 containerPos)
-        {
-            HandleDangerousTreasures(containerPos, LangKeys.Plugin.DangerousTreasuresEnded);
+            LogToConsole($"Admin Radar enabled by {player.UserIDString} {player.displayName}");
+
+            DiscordSendMessage(Lang(LangKeys.Plugin.AdminRadarOn, null, ReplaceChars(player.displayName)), _configData.AdminRadarSettings.WebhookURL);
         }
 
-        private void OnUserKicked(IPlayer player, string reason)
+        private void OnRadarDeactivated(BasePlayer player)
         {
-            LogToConsole($"Player {player.Name} ({player.Id}) was kicked ({reason})");
+            LogToConsole($"Admin Radar disabled by {player.UserIDString} {player.displayName}");
 
-            DiscordSendMessage(Lang(LangKeys.Event.UserKicked, null, ReplaceChars(player.Name), player.Id, ReplaceChars(reason)), _configData.UserKickedSettings.WebhookURL);
+            DiscordSendMessage(Lang(LangKeys.Plugin.AdminRadarOff, null, ReplaceChars(player.displayName)), _configData.AdminRadarSettings.WebhookURL);
+        }
+
+        private void OnRaidableBaseStarted(Vector3 raidPos, int difficulty)
+        {
+            HandleRaidableBase(raidPos, difficulty, LangKeys.Plugin.RaidableBaseStarted);
+        }
+
+        private void OnRaidableBaseEnded(Vector3 raidPos, int difficulty)
+        {
+            HandleRaidableBase(raidPos, difficulty, LangKeys.Plugin.RaidableBaseEnded);
+        }
+
+        private void OnRconConnection(IPAddress ip)
+        {
+            LogToConsole($"RCON connection is opened from {ip}");
+
+            DiscordSendMessage(Lang(LangKeys.Event.RconConnection, null, ip.ToString()), _configData.RconConnectionSettings.WebhookURL);
+        }
+
+        private void OnRconCommand(IPAddress ip, string command, string[] args)
+        {
+            foreach (string rconCommand in _configData.GlobalSettings.RCONCommandBlacklist)
+            {
+                if (command.ToLower().Equals(rconCommand.ToLower()))
+                {
+                    return;
+                }
+            }
+
+            for (int i = 0; i < args.Length; i++)
+            {
+                command += $" {args[i]}";
+            }
+
+            LogToConsole($"RCON command {command} is run from {ip}");
+
+            DiscordSendMessage(Lang(LangKeys.Event.RconCommand, null, command, ip), _configData.RconCommandSettings.WebhookURL);
+        }
+
+        private void OnSupplyDropLanded(SupplyDrop entity)
+        {
+            if (entity == null || _listSupplyDrops.Contains(entity.net.ID))
+            {
+                return;
+            }
+
+            LogToConsole($"SupplyDrop landed at {GetGridPosition(entity.transform.position)}");
+
+            DiscordSendMessage(Lang(LangKeys.Event.SupplyDropLanded, null, GetGridPosition(entity.transform.position)), _configData.SupplyDropSettings.WebhookURL);
+
+            _entityID = entity.net.ID;
+
+            _listSupplyDrops.Add(_entityID);
+
+            timer.Once(60f, () => _listSupplyDrops.Remove(_entityID));
         }
 
         private void OnUserBanned(string name, string id, string ipAddress, string reason)
@@ -833,39 +917,18 @@ namespace Oxide.Plugins
             DiscordSendMessage(Lang(LangKeys.Event.UserBanned, null, ReplaceChars(name), id, ipAddress, ReplaceChars(reason)), _configData.UserBannedSettings.WebhookURL);
         }
 
+        private void OnUserKicked(IPlayer player, string reason)
+        {
+            LogToConsole($"Player {player.Name} ({player.Id}) was kicked ({reason})");
+
+            DiscordSendMessage(Lang(LangKeys.Event.UserKicked, null, ReplaceChars(player.Name), player.Id, ReplaceChars(reason)), _configData.UserKickedSettings.WebhookURL);
+        }
+
         private void OnUserUnbanned(string name, string id, string ipAddress)
         {
             LogToConsole($"Player {name} ({id}) at {ipAddress} was unbanned");
 
             DiscordSendMessage(Lang(LangKeys.Event.UserUnbanned, null, ReplaceChars(name), id, ipAddress), _configData.UserBannedSettings.WebhookURL);
-        }
-
-        private void OnBetterChatMuted(IPlayer target, IPlayer initiator, string reason)
-        {
-            LogToConsole($"{target.Name} was muted by {initiator.Name} for ever ({reason})");
-
-            DiscordSendMessage(Lang(LangKeys.Event.UserMuted, null, ReplaceChars(target.Name), ReplaceChars(initiator.Name), "ever", ReplaceChars(reason)), _configData.UserMutedSettings.WebhookURL);
-        }
-
-        private void OnBetterChatMuteExpired(IPlayer player)
-        {
-            LogToConsole($"{player.Name} was unmuted by SERVER");
-
-            DiscordSendMessage(Lang(LangKeys.Event.UserUnmuted, null, ReplaceChars(player.Name), "SERVER"), _configData.UserMutedSettings.WebhookURL);
-        }
-
-        private void OnBetterChatTimeMuted(IPlayer target, IPlayer initiator, TimeSpan time, string reason)
-        {
-            LogToConsole($"{target.Name} was muted by {initiator.Name} for {time.ToShortString()} ({reason})");
-
-            DiscordSendMessage(Lang(LangKeys.Event.UserMuted, null, ReplaceChars(target.Name), ReplaceChars(initiator.Name), time.ToShortString(), ReplaceChars(reason)), _configData.UserMutedSettings.WebhookURL);
-        }
-
-        private void OnBetterChatUnmuted(IPlayer target, IPlayer initiator)
-        {
-            LogToConsole($"{target.Name} was unmuted by {initiator.Name}");
-
-            DiscordSendMessage(Lang(LangKeys.Event.UserUnmuted, null, ReplaceChars(target.Name), ReplaceChars(initiator.Name)), _configData.UserMutedSettings.WebhookURL);
         }
 
         private void OnUserNameUpdated(string id, string oldName, string newName)
@@ -880,48 +943,11 @@ namespace Oxide.Plugins
             DiscordSendMessage(Lang(LangKeys.Event.UserNameUpdated, null, ReplaceChars(oldName), ReplaceChars(newName), id), _configData.UserNameUpdateSettings.WebhookURL);
         }
 
-        private void OnClanCreate(string tag)
-        {
-            LogToConsole($"{tag} clan was created");
-
-            DiscordSendMessage(Lang(LangKeys.Plugin.ClanCreated, null, ReplaceChars(tag)), _configData.ClanSettings.WebhookURL);
-        }
-
-        private void OnClanDisbanded(string tag)
-        {
-            LogToConsole($"{tag} clan was disbanded");
-
-            DiscordSendMessage(Lang(LangKeys.Plugin.ClanDisbanded, null, ReplaceChars(tag)), _configData.ClanSettings.WebhookURL);
-        }
-
         private void OnServerMessage(string message, string name, string color, ulong id)
         {
             LogToConsole($"ServerMessage: {message}");
 
             DiscordSendMessage(Lang(LangKeys.Event.ServerMessage, null, message), _configData.ServerMessagesSettings.WebhookURL);
-        }
-
-        private void OnGodmodeToggled(string playerID, bool enabled)
-        {
-            IPlayer player = covalence.Players.FindPlayerById(playerID);
-
-            if (player == null)
-            {
-                return;
-            }
-
-            if (enabled)
-            {
-                LogToConsole($"Godmode disabled for {player.Id} {player.Name}");
-
-                DiscordSendMessage(Lang(LangKeys.Plugin.GodmodeOn, null, ReplaceChars(player.Name)), _configData.GodmodeSettings.WebhookURL);
-
-                return;
-            }
-
-            LogToConsole($"Godmode enabled for {player.Id} {player.Name}");
-
-            DiscordSendMessage(Lang(LangKeys.Plugin.GodmodeOff, null, ReplaceChars(player.Name)), _configData.GodmodeSettings.WebhookURL);
         }
 
         private void OnKitRedeemed(BasePlayer player, string kitName)
@@ -944,6 +970,49 @@ namespace Oxide.Plugins
 
             DiscordSendMessage(Lang(LangKeys.Plugin.VanishOff, null, ReplaceChars(player.displayName)), _configData.VanishSettings.WebhookURL);
         }
+
+        #region Team Hooks
+
+        private void OnTeamCreated(BasePlayer player, RelationshipManager.PlayerTeam team) => HandleTeam(team, TeamEventType.Created);
+
+        private void OnTeamDisbanded(RelationshipManager.PlayerTeam team) => HandleTeam(team, TeamEventType.Disbanded);
+
+        private void OnTeamUpdated(ulong currentTeam, RelationshipManager.PlayerTeam team, BasePlayer player)
+        {
+            NextTick( () => {
+                if (team.members.Count > 0)
+                {
+                    HandleTeam(team, TeamEventType.Updated);
+                }
+            });
+        }
+
+        private void OnTeamPromote(RelationshipManager.PlayerTeam team, BasePlayer newLeader)
+        {
+            NextTick( () => { HandleTeam(team, TeamEventType.Updated); });
+        }
+
+        private void OnTeamLeave(RelationshipManager.PlayerTeam team, BasePlayer player)
+        {
+            NextTick( () => {
+                if (team.members.Count > 0)
+                {
+                    HandleTeam(team, TeamEventType.Updated);
+                }
+            });
+        }
+
+        private void OnTeamKick(RelationshipManager.PlayerTeam team, BasePlayer player, ulong target)
+        {
+            NextTick( () => { HandleTeam(team, TeamEventType.Updated); });
+        }
+
+        private void OnTeamAcceptInvite(RelationshipManager.PlayerTeam team, BasePlayer player)
+        {
+            NextTick( () => { HandleTeam(team, TeamEventType.Updated); });
+        }
+
+        #endregion Team Hooks
 
         #region Permissions
 
@@ -1077,7 +1146,7 @@ namespace Oxide.Plugins
 
         #endregion Events Hooks
 
-        #region Methods
+        #region Core Methods
 
         private string ReplaceChars(string text)
         {
@@ -1092,6 +1161,7 @@ namespace Oxide.Plugins
             _sb.Replace("`", "'");
             _sb.Replace("_", "＿");
             _sb.Replace("~", "～");
+            _sb.Replace(">", "＞");
             _sb.Replace("@here", "here");
             _sb.Replace("@everyone", "everyone");
 
@@ -1129,18 +1199,18 @@ namespace Oxide.Plugins
 
         private void HandleQueue()
         {
-            if (!_isConnectionOK)
+            if (_retryCount > 0)
             {
                 if (_timerQueueCooldown == null)
                 {
-                    PrintError($"HandleQueue: Connection is NOT OK! Retrying in {_configData.GlobalSettings.QueueCooldown} seconds. Messages in queue: {_queue.Count}");
+                    float timeout = _configData.GlobalSettings.QueueCooldown * Math.Min(_retryCount, 10);
+                    PrintWarning($"HandleQueue: connection problem detected! Retry # {_retryCount}. Next try in {timeout} seconds. Messages in queue: {_queue.Count}");
 
-                    _timerQueueCooldown = timer.Once(_configData.GlobalSettings.QueueCooldown, () =>
+                    _timerQueueCooldown = timer.Once(timeout, () =>
                     {
                         DiscordSendMessage(_queuedMessage.WebhookUrl, new DiscordMessage(_queuedMessage.Message));
 
-                        _timerQueueCooldown?.Destroy();
-                        _timerQueueCooldown = null;
+                        QueueCooldownDisable();
 
                         HandleQueue();
                     });
@@ -1149,18 +1219,24 @@ namespace Oxide.Plugins
                 return;
             }
 
-            if (_timerQueue == null && _queue.Count > 0)
+            if (_timerQueueCooldown == null && _timerQueue == null && _queue.Count > 0)
             {
                 _queuedMessage = _queue.Dequeue();
 
                 _sb.Clear();
+
+                if (_queuedMessage.Message.Length > 1990)
+                {
+                    _queuedMessage.Message = $"{_queuedMessage.Message.Substring(0, 1990)}\n```";
+                }
+
                 _sb.AppendLine(_queuedMessage.Message);
 
                 for (int i = 0; i < _queue.Count; i++)
                 {
                     _nextMessage = _queue.Peek();
 
-                    if (_sb.Length + _nextMessage.Message.Length > 2000
+                    if (_sb.Length + _nextMessage.Message.Length > 1990
                      || _queuedMessage.WebhookUrl != _nextMessage.WebhookUrl)
                     {
                         break;
@@ -1181,6 +1257,12 @@ namespace Oxide.Plugins
                     HandleQueue();
                 });
             }
+        }
+
+        private void QueueCooldownDisable()
+        {
+            _timerQueueCooldown?.Destroy();
+            _timerQueueCooldown = null;
         }
 
         private void HandleEntity(BaseEntity baseEntity)
@@ -1341,6 +1423,9 @@ namespace Oxide.Plugins
                 case 4:
                     difficultyString = LangKeys.Format.Nightmare;
                     break;
+                case 512:
+                    difficultyString = string.Empty;
+                    break;
                 default:
                     PrintError($"{langKey}: Unknown difficulty: {difficulty}");
                     return;
@@ -1364,7 +1449,93 @@ namespace Oxide.Plugins
             DiscordSendMessage(Lang(langKey, null, GetGridPosition(containerPos)), _configData.DangerousTreasuresSettings.WebhookURL);
         }
 
-        #endregion Methods
+        private void HandleLog(string logString, string stackTrace, LogType type)
+        {
+            if (_configData.ErrorSettings.Enabled && type == LogType.Error)
+            {
+                _sb.Clear();
+
+                _sb.AppendLine("```cs");
+                _sb.AppendLine(logString);
+                _sb.AppendLine("```");
+
+                if (!string.IsNullOrEmpty(stackTrace))
+                {
+                    _sb.AppendLine("```cs");
+                    _sb.AppendLine(stackTrace);
+                    _sb.AppendLine("```");
+                }
+
+                DiscordSendMessage(Lang(LangKeys.Event.Error, null, _sb), _configData.ErrorSettings.WebhookURL);
+            }
+        }
+
+        private void HandleTeam(RelationshipManager.PlayerTeam team, TeamEventType teamEventType)
+        {
+            _sb.Clear();
+
+            BasePlayer player = BasePlayer.FindByID(team.teamLeader);
+
+            if (player == null)
+            {
+                player = BasePlayer.FindAwakeOrSleeping(team.teamLeader.ToString());
+            }
+
+            _sb.AppendLine("```cs");
+            _sb.AppendLine();
+            _sb.Append("TeamID: ");
+            _sb.Append(team.teamID);
+            _sb.AppendLine();
+            _sb.Append("TeamLeader: ");
+            _sb.Append(player.userID);
+            _sb.Append(" (");
+            _sb.Append(player.displayName);
+            _sb.Append(")");
+            if (team.members.Count > 0)
+            {
+                _sb.AppendLine();
+                _sb.Append("Members:");
+            }
+
+            foreach (ulong userID in team.members)
+            {
+                player = BasePlayer.FindByID(userID);
+
+                if (player == null)
+                {
+                    player = BasePlayer.FindAwakeOrSleeping(userID.ToString());
+                }
+
+                _sb.AppendLine();
+                _sb.Append(player.userID);
+                _sb.Append(" (");
+                _sb.Append(player.displayName);
+                _sb.Append(")");
+            }
+
+            _sb.AppendLine("```");
+
+            string eventType = string.Empty;
+
+            switch (teamEventType)
+            {
+                case TeamEventType.Created:
+                    eventType = Lang(LangKeys.Format.Created);
+                    break;
+                case TeamEventType.Disbanded:
+                    eventType = Lang(LangKeys.Format.Disbanded);
+                    break;
+                case TeamEventType.Updated:
+                    eventType = Lang(LangKeys.Format.Updated);
+                    break;
+            }
+
+            LogToConsole($"Team was {eventType}\n{_sb.ToString()}");
+
+            DiscordSendMessage(Lang(LangKeys.Event.Team, null, eventType, _sb.ToString()), _configData.TeamsSettings.WebhookURL);
+        }
+
+        #endregion Core Methods
 
         #region Helpers
 
@@ -1405,6 +1576,13 @@ namespace Oxide.Plugins
             Unsubscribe(nameof(OnRconConnection));
             Unsubscribe(nameof(OnServerMessage));
             Unsubscribe(nameof(OnSupplyDropLanded));
+            Unsubscribe(nameof(OnTeamAcceptInvite));
+            Unsubscribe(nameof(OnTeamCreated));
+            Unsubscribe(nameof(OnTeamDisbanded));
+            Unsubscribe(nameof(OnTeamKick));
+            Unsubscribe(nameof(OnTeamLeave));
+            Unsubscribe(nameof(OnTeamPromote));
+            Unsubscribe(nameof(OnTeamUpdated));
             Unsubscribe(nameof(OnTimedGroupAdded));
             Unsubscribe(nameof(OnTimedGroupExtended));
             Unsubscribe(nameof(OnTimedPermissionExtended));
@@ -1596,6 +1774,22 @@ namespace Oxide.Plugins
                 Subscribe(nameof(OnVanishDisappear));
                 Subscribe(nameof(OnVanishReappear));
             }
+
+            if (_configData.ErrorSettings.Enabled)
+            {
+                Application.logMessageReceivedThreaded += HandleLog;
+            }
+
+            if (_configData.TeamsSettings.Enabled)
+            {
+                Subscribe(nameof(OnTeamAcceptInvite));
+                Subscribe(nameof(OnTeamCreated));
+                Subscribe(nameof(OnTeamDisbanded));
+                Subscribe(nameof(OnTeamKick));
+                Subscribe(nameof(OnTeamLeave));
+                Subscribe(nameof(OnTeamPromote));
+                Subscribe(nameof(OnTeamUpdated));
+            }
         }
 
         private string StripRustTags(string text)
@@ -1707,17 +1901,40 @@ namespace Oxide.Plugins
             switch (code)
             {
                 case 204:
-                    _isConnectionOK = true;
+                    _retryCount = 0;
+                    QueueCooldownDisable();
+                    return;
+                case 401:
+                    Dictionary<string, object> objectJson = JsonConvert.DeserializeObject<Dictionary<string, object>>(message);
+                    int messageCode = 0;
+                    if (objectJson["code"] != null && int.TryParse(objectJson["code"].ToString(), out messageCode))
+                    {
+                        if (messageCode == 50027)
+                        {
+                            PrintError($"Invalid Webhook Token: '{_queuedMessage.WebhookUrl}'");
+                            return;
+                        }
+                    }
                     break;
+                case 404:
+                    PrintError($"Invalid Webhook (404: Not Found): '{_queuedMessage.WebhookUrl}'");
+                    return;
+                case 405:
+                    PrintError($"Invalid Webhook (405: Method Not Allowed): '{_queuedMessage.WebhookUrl}'");
+                    return;
                 case 429:
-                    _isConnectionOK = false;
-                    PrintError("You are being rate limited. To avoid this try to increase queue interval in your config file.");
+                    message = "You are being rate limited. To avoid this try to increase queue interval in your config file.";
+                    break;
+                case 500:
+                    message = "There are some issues with Discord server (500 Internal Server Error)";
                     break;
                 default:
-                    _isConnectionOK = false;
-                    PrintError($"DiscordSendMessageCallback: code = {code} message = {message}");
+                    message = $"DiscordSendMessageCallback: code = {code} message = {message}";
                     break;
             }
+
+            _retryCount++;
+            PrintError(message);
         }
         #endregion Send Embed Methods
 
