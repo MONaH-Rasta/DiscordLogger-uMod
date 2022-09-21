@@ -11,17 +11,18 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Discord Logger", "MON@H", "2.0.3")]
+    [Info("Discord Logger", "MON@H", "2.0.4")]
     [Description("Logs events to Discord channels using webhooks")]
     class DiscordLogger : RustPlugin
     {
         #region Variables
 
-        [PluginReference] private Plugin AntiSpamNames, BetterChatMute, CallHeli, PersonalHeli, UFilter;
+        [PluginReference] private Plugin AntiSpam, BetterChatMute, CallHeli, PersonalHeli, UFilter;
 
         private readonly Queue<QueuedMessage> _queue = new Queue<QueuedMessage>();
         private readonly List<uint> _listSupplyDrops = new List<uint>();
         private readonly StringBuilder _sb = new StringBuilder();
+
         private bool _isConnectionOK = true;
         private uint _entityID;
         private string[] _profanities;
@@ -31,6 +32,7 @@ namespace Oxide.Plugins
         private Timer _timerQueueCooldown;
         private QueuedMessage _queuedMessage;
         private QueuedMessage _nextMessage;
+        private object _resultCall;
 
         private readonly List<Regex> _regexTags = new List<Regex>
         {
@@ -224,8 +226,8 @@ namespace Oxide.Plugins
             [JsonProperty(PropertyName = "Log to console?")]
             public bool LoggingEnabled = false;
 
-            [JsonProperty(PropertyName = "Use AntiSpamNames plugin on chat messages")]
-            public bool UseAntiSpamNames = false;
+            [JsonProperty(PropertyName = "Use AntiSpam plugin on chat messages")]
+            public bool UseAntiSpam = false;
 
             [JsonProperty(PropertyName = "Use UFilter plugin on chat messages")]
             public bool UseUFilter = false;
@@ -724,15 +726,19 @@ namespace Oxide.Plugins
 
             if (IsPluginLoaded(BetterChatMute))
             {
-                if (BetterChatMute.Call<bool>("API_IsMuted", player.IPlayer))
+                _resultCall = BetterChatMute.Call("API_IsMuted", player.IPlayer);
+
+                if (_resultCall is bool && (bool)_resultCall)
                 {
                     return;
                 }
             }
 
-            if (_configData.GlobalSettings.UseAntiSpamNames && IsPluginLoaded(AntiSpamNames))
+            if (_configData.GlobalSettings.UseAntiSpam && IsPluginLoaded(AntiSpam))
             {
-                message = AntiSpamNames.Call<string>("GetClearText", message);
+                _resultCall = AntiSpam.Call("GetSpamFreeText", message);
+
+                message = (_resultCall as string);
 
                 if (string.IsNullOrWhiteSpace(message))
                 {
@@ -745,7 +751,12 @@ namespace Oxide.Plugins
                 _sb.Clear();
                 _sb.Append(message);
 
-                _profanities = UFilter.Call<string[]>("Profanities", message);
+                _resultCall = UFilter.Call("Profanities", message);
+
+                if (_resultCall is string[])
+                {
+                    _profanities = _resultCall as string[];
+                }
 
                 foreach (string profanity in _profanities)
                 {
@@ -1258,7 +1269,9 @@ namespace Oxide.Plugins
 
                     if (IsPluginLoaded(CallHeli))
                     {
-                        if (CallHeli.Call<bool>("IsPersonal", baseEntity))
+                        _resultCall = CallHeli.Call("IsPersonal", baseEntity);
+
+                        if (_resultCall is bool && (bool)_resultCall)
                         {
                             LogToConsole("Personal Helicopter spawned at " + GetGridPosition(baseEntity.transform.position));
 
@@ -1269,7 +1282,9 @@ namespace Oxide.Plugins
 
                     if (IsPluginLoaded(PersonalHeli))
                     {
-                        if (PersonalHeli.Call<bool>("IsPersonal", baseEntity))
+                        _resultCall = PersonalHeli.Call("IsPersonal", baseEntity);
+
+                        if (_resultCall is bool && (bool)_resultCall)
                         {
                             LogToConsole("Personal Helicopter spawned at " + GetGridPosition(baseEntity.transform.position));
 
