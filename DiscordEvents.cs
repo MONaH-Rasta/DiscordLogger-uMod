@@ -7,7 +7,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Discord Events", "MON@H", "0.2.0")]
+    [Info("Discord Events", "MON@H", "0.2.1")]
     [Description("Displays events to a discord channel")]
     internal class DiscordEvents : CovalencePlugin
     {
@@ -296,7 +296,7 @@ namespace Oxide.Plugins
                         Puts("Halloween Hunt Event has ended. The winner is " + winner);
                     }
 
-                    SendMsgToChannel(Lang("HalloweenWinner", winner), _configData.HalloweenSettings.WebhookURL);
+                    SendMsgToChannel(Lang("HalloweenWinner", null, winner), _configData.HalloweenSettings.WebhookURL);
                 }
             }
             else
@@ -308,7 +308,7 @@ namespace Oxide.Plugins
                         Puts("Egg Hunt Event has ended. The winner is " + winner);
                     }
 
-                    SendMsgToChannel(Lang("EasterWinner", winner), _configData.EasterSettings.WebhookURL);
+                    SendMsgToChannel(Lang("EasterWinner", null, winner), _configData.EasterSettings.WebhookURL);
                 }
             }
 
