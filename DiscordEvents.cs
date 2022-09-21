@@ -8,7 +8,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Discord Events", "MON@H", "0.0.7")]
+    [Info("Discord Events", "MON@H", "0.0.8")]
     [Description("Displays events to a discord channel")]
     internal class DiscordEvents : CovalencePlugin
     {
@@ -37,7 +37,7 @@ namespace Oxide.Plugins
                 ["Halloween"] = ":mage: Halloween event started",
                 ["Helicopter"] = ":crossed_swords: Helicopter incoming",
                 ["Initialized"] = ":ballot_box_with_check: Server is online again!",
-                ["LockedCrate"] = ":package: Codelocked crate is here (`{0}`)",
+                ["LockedCrate"] = ":package: Codelocked crate is here `{0}`",
                 ["PersonalHelicopter"] = ":crossed_swords: Personal Helicopter incoming",
                 ["RaidableBaseEnded"] = ":homes: {1} Raidable Base at `{0}` is ended",
                 ["RaidableBaseStarted"] = ":homes: {1} Raidable Base spawned at `{0}`",
@@ -64,7 +64,7 @@ namespace Oxide.Plugins
 
         private void OnServerInitialized(bool isStartup)
         {
-            SendChatToChannel(Lang("Initialized"));
+            SendMsgToChannel(Lang("Initialized"));
         }
 
         private void OnDiscordCoreReady()
@@ -120,16 +120,16 @@ namespace Oxide.Plugins
                 case "Helicopter":
                     return;
                 case "FancyDrop":
-                    SendChatToChannel(Lang("AirDropIncoming", null, GetGridPosition(eventEntity.transform.position)));
+                    SendMsgToChannel(Lang("AirDropIncoming", null, GetGridPosition(eventEntity.transform.position)));
                     return;
             }
             Puts("AutoEvent: " + eventTypeStr);
-            SendChatToChannel(Lang(eventTypeStr.Replace(" ", string.Empty)));
+            SendMsgToChannel(Lang(eventTypeStr.Replace(" ", string.Empty)));
         }
 
         private void OnEntitySpawned(BradleyAPC entity)
         {
-            SendChatToChannel(Lang("Bradley"));
+            SendMsgToChannel(Lang("Bradley"));
         }
 
         private void OnEntitySpawned(BaseHelicopter entity)
@@ -139,28 +139,28 @@ namespace Oxide.Plugins
                 {
                     if (PersonalHeli.Call<bool>("IsPersonal", entity))
                     {
-                        SendChatToChannel(Lang("PersonalHelicopter"));
+                        SendMsgToChannel(Lang("PersonalHelicopter"));
                         return;
                     }
                 }
 
-                SendChatToChannel(Lang("Helicopter"));
+                SendMsgToChannel(Lang("Helicopter"));
             });
         }
 
         private void OnEntitySpawned(CH47Helicopter entity)
         {
-            SendChatToChannel(Lang("Chinook"));
+            SendMsgToChannel(Lang("Chinook"));
         }
 
         private void OnEntitySpawned(HackableLockedCrate entity)
         {
-            SendChatToChannel(Lang("LockedCrate", null, GetGridPosition(entity.transform.position)));
+            SendMsgToChannel(Lang("LockedCrate", null, GetGridPosition(entity.transform.position)));
         }
 
         private void OnEntitySpawned(SupplyDrop entity)
         {
-            SendChatToChannel(Lang("AirDropIncoming", null, GetGridPosition(entity.transform.position)));
+            SendMsgToChannel(Lang("AirDropIncoming", null, GetGridPosition(entity.transform.position)));
         }
 
         private void OnSupplyDropLanded(SupplyDrop entity)
@@ -168,7 +168,7 @@ namespace Oxide.Plugins
             if (entity == null) return;
             if (IsEntityInList(entity.net.ID)) return;
 
-            SendChatToChannel(Lang("AirDropLanded", null, GetGridPosition(entity.transform.position)));
+            SendMsgToChannel(Lang("AirDropLanded", null, GetGridPosition(entity.transform.position)));
             _lastEntities.Add(entity.net.ID, DateTime.Now.Add(TimeSpan.FromSeconds(30)));
         }
 
@@ -177,13 +177,13 @@ namespace Oxide.Plugins
             switch (difficulty)
             {
                 case 1:
-                    SendChatToChannel(Lang("RaidableBaseStarted", null, GetGridPosition(raidPos), Lang("Easy")));
+                    SendMsgToChannel(Lang("RaidableBaseStarted", null, GetGridPosition(raidPos), Lang("Easy")));
                     return;
                 case 2:
-                    SendChatToChannel(Lang("RaidableBaseStarted", null, GetGridPosition(raidPos), Lang("Medium")));
+                    SendMsgToChannel(Lang("RaidableBaseStarted", null, GetGridPosition(raidPos), Lang("Medium")));
                     return;
                 case 3:
-                    SendChatToChannel(Lang("RaidableBaseStarted", null, GetGridPosition(raidPos), Lang("Hard")));
+                    SendMsgToChannel(Lang("RaidableBaseStarted", null, GetGridPosition(raidPos), Lang("Hard")));
                     return;
             }
         }
@@ -192,20 +192,20 @@ namespace Oxide.Plugins
             switch (difficulty)
             {
                 case 1:
-                    SendChatToChannel(Lang("RaidableBaseEnded", null, GetGridPosition(raidPos), Lang("Easy")));
+                    SendMsgToChannel(Lang("RaidableBaseEnded", null, GetGridPosition(raidPos), Lang("Easy")));
                     return;
                 case 2:
-                    SendChatToChannel(Lang("RaidableBaseEnded", null, GetGridPosition(raidPos), Lang("Medium")));
+                    SendMsgToChannel(Lang("RaidableBaseEnded", null, GetGridPosition(raidPos), Lang("Medium")));
                     return;
                 case 3:
-                    SendChatToChannel(Lang("RaidableBaseEnded", null, GetGridPosition(raidPos), Lang("Hard")));
+                    SendMsgToChannel(Lang("RaidableBaseEnded", null, GetGridPosition(raidPos), Lang("Hard")));
                     return;
             }
         }
 
         void OnServerShutdown()
         {
-            SendChatToChannel(Lang("Shutdown"));
+            SendMsgToChannel(Lang("Shutdown"));
         }
 
         #endregion
@@ -260,9 +260,11 @@ namespace Oxide.Plugins
             return $"{extraA}{(char) ('A' + xGrid)}{zGrid}";
         }
 
-        private void SendChatToChannel(string message)
+        private void SendMsgToChannel(string message)
         {
             if (!_init) return;
+            if (string.IsNullOrWhiteSpace(message)) return;
+            if (string.IsNullOrEmpty(message)) return;
             DiscordCore.Call("SendMessageToChannel", _pluginConfig.EventsChannel, message);
         }
         
