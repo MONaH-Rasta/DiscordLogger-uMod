@@ -1,24 +1,22 @@
-﻿using System;
-using System.Collections.Generic;
-using System.ComponentModel;
 using Newtonsoft.Json;
 using Oxide.Core.Plugins;
-using Oxide.Ext.Discord.DiscordObjects;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System;
 using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Discord Events", "MON@H", "0.0.8")]
+    [Info("Discord Events", "MON@H", "0.1.5")]
     [Description("Displays events to a discord channel")]
     internal class DiscordEvents : CovalencePlugin
     {
         #region Class Fields
-        [PluginReference] private readonly Plugin DiscordCore, AutomatedEvents, PersonalHeli, RaidableBases;
+        [PluginReference] private Plugin DiscordMessages, AutomatedEvents, PersonalHeli, RaidableBases;
         private PluginConfig _pluginConfig;
-
-        private bool _init;
         private Dictionary<uint, DateTime> _lastEntities = new Dictionary<uint, DateTime>();
         private float _half;
+        private List<string> _queue = new List<string>();
         #endregion
 
         #region Setup & Loading
@@ -28,17 +26,17 @@ namespace Oxide.Plugins
             {
                 ["AirDropIncoming"] = ":parachute: Airdrop incoming to `{0}`",
                 ["AirDropLanded"] = ":gift: Airdrop landed to `{0}`",
-                ["Bradley"] = ":crossed_swords: Bradley spawned",
-                ["CargoPlane"] = ":airplane: Cargo Plane incoming",
-                ["CargoShip"] = ":ship: Cargo Ship incoming",
-                ["Chinook"] = ":helicopter: Chinook 47 incoming",
+                ["Bradley"] = ":crossed_swords: Bradley spawned `{0}`",
+                ["CargoPlane"] = ":airplane: Cargo Plane incoming `{0}`",
+                ["CargoShip"] = ":ship: Cargo Ship incoming `{0}`",
+                ["Chinook"] = ":helicopter: Chinook 47 incoming `{0}`",
                 ["Christmas"] = ":christmas_tree: Christmas event started",
                 ["Easter"] = ":egg: Easter event started",
                 ["Halloween"] = ":mage: Halloween event started",
-                ["Helicopter"] = ":crossed_swords: Helicopter incoming",
+                ["Helicopter"] = ":crossed_swords: Helicopter incoming `{0}`",
                 ["Initialized"] = ":ballot_box_with_check: Server is online again!",
                 ["LockedCrate"] = ":package: Codelocked crate is here `{0}`",
-                ["PersonalHelicopter"] = ":crossed_swords: Personal Helicopter incoming",
+                ["PersonalHelicopter"] = ":crossed_swords: Personal Helicopter incoming `{0}`",
                 ["RaidableBaseEnded"] = ":homes: {1} Raidable Base at `{0}` is ended",
                 ["RaidableBaseStarted"] = ":homes: {1} Raidable Base spawned at `{0}`",
                 ["SantaSleigh"] = ":santa: SantaSleigh Event started",
@@ -52,40 +50,83 @@ namespace Oxide.Plugins
         
         private void OnServerInitialized()
         {
-            if (DiscordCore == null)
+            if (DiscordMessages == null || !DiscordMessages.IsLoaded)
             {
-                PrintError("Missing plugin dependency DiscordCore: https://umod.org/plugins/discord-core");
+                PrintError("Missing plugin dependency DiscordMessages: https://umod.org/plugins/discord-messages");
                 return;
             }
 
-            OnDiscordCoreReady();
+            if (string.IsNullOrEmpty(_pluginConfig.WebhookURL))
+            {
+                PrintError("WebhookURL is null or emply, set it correctly and then restart plugin");
+                return;
+            }
+
             _half = World.Size / 2.0f;
-        }
-
-        private void OnServerInitialized(bool isStartup)
-        {
-            SendMsgToChannel(Lang("Initialized"));
-        }
-
-        private void OnDiscordCoreReady()
-        {
-            if (!(DiscordCore?.Call<bool>("IsReady") ?? false))
-            {
-                return;
-            }
-
-            Channel channel = DiscordCore.Call<Channel>("GetChannel", _pluginConfig.EventsChannel);
-            if (channel == null)
-            {
-                PrintError($"Failed to find a channel with the name or id {_pluginConfig.EventsChannel} in the discord");
-            }
-
-            _init = true;
             Subscribe(nameof(OnAutoEventTriggered));
             Subscribe(nameof(OnRaidableBaseStarted));
             Subscribe(nameof(OnRaidableBaseEnded));
         }
-        
+
+        private void OnServerInitialized(bool isStartup)
+        {
+            timer.Once(5f, () => SendMsgToChannel(Lang("Initialized")));
+        }
+
+        private void OnPluginLoaded(Plugin plugin)
+        {
+            switch (plugin.Title)
+            {
+                case "AutomatedEvents":
+                    {
+                        AutomatedEvents = plugin;
+                        break;
+                    }
+                case "DiscordMessages":
+                    {
+                        DiscordMessages = plugin;
+                        break;
+                    }
+                case "PersonalHeli":
+                    {
+                        PersonalHeli = plugin;
+                        break;
+                    }
+                case "RaidableBases":
+                    {
+                        RaidableBases = plugin;
+                        break;
+                    }
+            }
+        }
+
+        private void OnPluginUnloaded(Plugin plugin)
+        {
+            switch (plugin.Title)
+            {
+                case "AutomatedEvents":
+                    {
+                        AutomatedEvents = null;
+                        break;
+                    }
+                case "DiscordMessages":
+                    {
+                        DiscordMessages = null;
+                        break;
+                    }
+                case "PersonalHeli":
+                    {
+                        PersonalHeli = null;
+                        break;
+                    }
+                case "RaidableBases":
+                    {
+                        RaidableBases = null;
+                        break;
+                    }
+            }
+        }
+
         protected override void LoadDefaultConfig()
         {
             PrintWarning("Loading Default Config");
@@ -124,12 +165,19 @@ namespace Oxide.Plugins
                     return;
             }
             Puts("AutoEvent: " + eventTypeStr);
-            SendMsgToChannel(Lang(eventTypeStr.Replace(" ", string.Empty)));
+            if (eventEntity != null)
+            {
+                SendMsgToChannel(Lang(eventTypeStr.Replace(" ", string.Empty), null, GetGridPosition(eventEntity.transform.position)));
+            }
+            else
+            {
+                SendMsgToChannel(Lang(eventTypeStr.Replace(" ", string.Empty)));
+            }
         }
 
         private void OnEntitySpawned(BradleyAPC entity)
         {
-            SendMsgToChannel(Lang("Bradley"));
+            SendMsgToChannel(Lang("Bradley", null, GetGridPosition(entity.transform.position)));
         }
 
         private void OnEntitySpawned(BaseHelicopter entity)
@@ -139,18 +187,18 @@ namespace Oxide.Plugins
                 {
                     if (PersonalHeli.Call<bool>("IsPersonal", entity))
                     {
-                        SendMsgToChannel(Lang("PersonalHelicopter"));
+                        SendMsgToChannel(Lang("PersonalHelicopter", null, GetGridPosition(entity.transform.position)));
                         return;
                     }
                 }
 
-                SendMsgToChannel(Lang("Helicopter"));
+                SendMsgToChannel(Lang("Helicopter", null, GetGridPosition(entity.transform.position)));
             });
         }
 
         private void OnEntitySpawned(CH47Helicopter entity)
         {
-            SendMsgToChannel(Lang("Chinook"));
+            SendMsgToChannel(Lang("Chinook", null, GetGridPosition(entity.transform.position)));
         }
 
         private void OnEntitySpawned(HackableLockedCrate entity)
@@ -262,12 +310,29 @@ namespace Oxide.Plugins
 
         private void SendMsgToChannel(string message)
         {
-            if (!_init) return;
             if (string.IsNullOrWhiteSpace(message)) return;
             if (string.IsNullOrEmpty(message)) return;
-            DiscordCore.Call("SendMessageToChannel", _pluginConfig.EventsChannel, message);
+            if (string.IsNullOrEmpty(_pluginConfig.WebhookURL))
+            {
+                PrintError("WebhookURL is null or emply, set it correctly and then restart plugin");
+                return;
+            }
+            if (DiscordMessages == null || !DiscordMessages.IsLoaded)
+            {
+                _queue.Add(message);
+                return;
+            }
+
+            for (var i = 0; i < _queue.Count; i++)
+            {
+                var msg = _queue[i];
+                DiscordMessages?.Call("API_SendTextMessage", _pluginConfig.WebhookURL, msg, false, this);
+                _queue.Remove(msg);
+            }
+
+            DiscordMessages?.Call("API_SendTextMessage", _pluginConfig.WebhookURL, message, false, this);
         }
-        
+
         private string Lang(string key, BasePlayer player = null, params object[] args)
         {
             try
@@ -285,9 +350,9 @@ namespace Oxide.Plugins
         #region Classes
         private class PluginConfig
         {
-            [DefaultValue("Events")]
-            [JsonProperty("Events Channel Name or Id")]
-            public string EventsChannel { get; set; }
+            [DefaultValue("")]
+            [JsonProperty("Events WebhookURL")]
+            public string WebhookURL { get; set; }
         }
         #endregion
     }
