@@ -11,13 +11,13 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Discord Logger", "MON@H", "2.0.2")]
+    [Info("Discord Logger", "MON@H", "2.0.3")]
     [Description("Logs events to Discord channels using webhooks")]
     class DiscordLogger : RustPlugin
     {
         #region Variables
 
-        [PluginReference] private Plugin AntiSpamNames, BetterChatMute, PersonalHeli, PersonalHeliExtended, UFilter;
+        [PluginReference] private Plugin AntiSpamNames, BetterChatMute, CallHeli, PersonalHeli, UFilter;
 
         private readonly Queue<QueuedMessage> _queue = new Queue<QueuedMessage>();
         private readonly List<uint> _listSupplyDrops = new List<uint>();
@@ -1208,6 +1208,12 @@ namespace Oxide.Plugins
                 _eventSettings = _configData.ChinookSettings;
                 LogToConsole($"CH47Helicopter spawned at {GetGridPosition(baseEntity.transform.position)}");
             }
+            else if (baseEntity is HalloweenHunt)
+            {
+                _langKey = LangKeys.Event.Halloween;
+                _eventSettings = _configData.HalloweenSettings;
+                LogToConsole($"HalloweenHunt spawned at {GetGridPosition(baseEntity.transform.position)}");
+            }
             else if (baseEntity is EggHuntEvent)
             {
                 _langKey = LangKeys.Event.Easter;
@@ -1219,12 +1225,6 @@ namespace Oxide.Plugins
                 _langKey = LangKeys.Event.LockedCrate;
                 _eventSettings = _configData.LockedCrateSettings;
                 LogToConsole($"HackableLockedCrate spawned at {GetGridPosition(baseEntity.transform.position)}");
-            }
-            else if (baseEntity is HalloweenHunt)
-            {
-                _langKey = LangKeys.Event.Halloween;
-                _eventSettings = _configData.HalloweenSettings;
-                LogToConsole($"HalloweenHunt spawned at {GetGridPosition(baseEntity.transform.position)}");
             }
             else if (baseEntity is SantaSleigh)
             {
@@ -1255,9 +1255,10 @@ namespace Oxide.Plugins
             {
                 if (baseEntity is BaseHelicopter)
                 {
-                    if (IsPluginLoaded(PersonalHeli))
+
+                    if (IsPluginLoaded(CallHeli))
                     {
-                        if (PersonalHeli.Call<bool>("IsPersonal", baseEntity))
+                        if (CallHeli.Call<bool>("IsPersonal", baseEntity))
                         {
                             LogToConsole("Personal Helicopter spawned at " + GetGridPosition(baseEntity.transform.position));
 
@@ -1266,9 +1267,9 @@ namespace Oxide.Plugins
                         }
                     }
 
-                    if (IsPluginLoaded(PersonalHeliExtended))
+                    if (IsPluginLoaded(PersonalHeli))
                     {
-                        if (PersonalHeliExtended.Call<bool>("IsPersonal", baseEntity))
+                        if (PersonalHeli.Call<bool>("IsPersonal", baseEntity))
                         {
                             LogToConsole("Personal Helicopter spawned at " + GetGridPosition(baseEntity.transform.position));
 
