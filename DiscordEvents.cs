@@ -1,29 +1,55 @@
 using Newtonsoft.Json;
+using Oxide.Core.Libraries.Covalence;
 using Oxide.Core.Libraries;
 using Oxide.Core.Plugins;
 using System.Collections.Generic;
+using System.Text.RegularExpressions;
 using Time = UnityEngine.Time;
 using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Discord Events", "MON@H", "0.2.1")]
+    [Info("Discord Events", "MON@H", "1.2.0")]
     [Description("Displays events to a discord channel")]
-    internal class DiscordEvents : CovalencePlugin
+    class DiscordEvents : CovalencePlugin
     {
         #region Class Fields
 
-        [PluginReference] private Plugin PersonalHeli, RaidableBases;
+        [PluginReference] private Plugin BetterChatMute, PersonalHeli;
 
+        private Dictionary<DiscordMessage, string> _queueMessages = new Dictionary<DiscordMessage, string>();
+        private Dictionary<DiscordMessage, string> _queueProcessed = new Dictionary<DiscordMessage, string>();
         private Dictionary<uint, float> _lastEntities = new Dictionary<uint, float>();
+
+        private readonly List<Regex> _regexTags = new List<Regex>
+        {
+            new Regex("<color=.+?>", RegexOptions.Compiled),
+            new Regex("<size=.+?>", RegexOptions.Compiled)
+        };
+
+        private readonly List<string> _tags = new List<string>
+        {
+            "</color>",
+            "</size>",
+            "<i>",
+            "</i>",
+            "<b>",
+            "</b>"
+        };
 
         private enum EventType
         {
             Bradley,
             CargoPlane,
             CargoShip,
+            Chat,
+            ChatTeam,
             Chinook,
             Christmas,
+            DangerousTreasures,
+            Death,
+            DeathNotes,
+            Duel,
             Easter,
             Halloween,
             Helicopter,
@@ -34,17 +60,21 @@ namespace Oxide.Plugins
             PlayerDisconnected,
             RaidableBases,
             SantaSleigh,
-            SupplyDrop
+            SupplyDrop,
+            SupplySignal
         }
 
         #endregion Class Fields
 
         #region Initialization
 
-        private void OnServerInitialized(bool isStartup)
+        private void Init()
         {
             UnsubscribeDisabled();
+        }
 
+        private void OnServerInitialized(bool isStartup)
+        {
             if (isStartup && _configData.ServerStateSettings.Enabled)
             {
                 if (_configData.GlobalSettings.LoggingEnabled)
@@ -52,7 +82,7 @@ namespace Oxide.Plugins
                     Puts("Server is online again!");
                 }
 
-                SendMsgToChannel(Lang("Initialized"), _configData.ServerStateSettings.WebhookURL);
+                SendMessage(Lang("Initialized"), _configData.ServerStateSettings.WebhookURL);
             }
         }
 
@@ -65,7 +95,8 @@ namespace Oxide.Plugins
                     Puts("Server is shutting down!");
                 }
 
-                SendMsgToChannel(Lang("Shutdown"), _configData.ServerStateSettings.WebhookURL);
+                DiscordMessage discordMessage = new DiscordMessage(Lang("Shutdown"));
+                SendDiscordMessage(_configData.ServerStateSettings.WebhookURL, discordMessage);
             }
         }
 
@@ -89,11 +120,23 @@ namespace Oxide.Plugins
             [JsonProperty(PropertyName = "Cargo Plane settings")]
             public EventSettings CargoPlaneSettings = new EventSettings();
 
+            [JsonProperty(PropertyName = "Chat settings")]
+            public EventSettings ChatSettings = new EventSettings();
+
+            [JsonProperty(PropertyName = "Chat (Team) settings")]
+            public EventSettings ChatTeamSettings = new EventSettings();
+
             [JsonProperty(PropertyName = "CH47 Helicopter settings")]
             public EventSettings ChinookSettings = new EventSettings();
 
             [JsonProperty(PropertyName = "Christmas settings")]
             public EventSettings ChristmasSettings = new EventSettings();
+
+            [JsonProperty(PropertyName = "Dangerous Treasures settings")]
+            public EventSettings DangerousTreasuresSettings = new EventSettings();
+
+            [JsonProperty(PropertyName = "Duel settings")]
+            public EventSettings DuelSettings = new EventSettings();
 
             [JsonProperty(PropertyName = "Easter settings")]
             public EventSettings EasterSettings = new EventSettings();
@@ -106,6 +149,12 @@ namespace Oxide.Plugins
 
             [JsonProperty(PropertyName = "Helicopter settings")]
             public EventSettings HelicopterSettings = new EventSettings();
+
+            [JsonProperty(PropertyName = "Player death settings")]
+            public EventSettings PlayerDeathSettings = new EventSettings();
+
+            [JsonProperty(PropertyName = "Player DeathNotes settings")]
+            public EventSettings PlayerDeathNotesSettings = new EventSettings();
 
             [JsonProperty(PropertyName = "Player connect advanced info settings")]
             public EventSettings PlayerConnectedInfoSettings = new EventSettings();
@@ -132,7 +181,7 @@ namespace Oxide.Plugins
         private class GlobalSettings
         {
             [JsonProperty(PropertyName = "Log to console?")]
-            public bool LoggingEnabled = true;
+            public bool LoggingEnabled = false;
         }
 
         private class EventSettings
@@ -141,7 +190,7 @@ namespace Oxide.Plugins
             public string WebhookURL = "";
 
             [JsonProperty(PropertyName = "Enabled?")]
-            public bool Enabled = true;
+            public bool Enabled = false;
         }
 
         protected override void LoadConfig()
@@ -182,19 +231,26 @@ namespace Oxide.Plugins
         {
             lang.RegisterMessages(new Dictionary<string, string>
             {
-                ["Bradley"] = ":crossed_swords: Bradley spawned `{0}`",
+                ["Bradley"] = ":dagger: Bradley spawned `{0}`",
                 ["CargoPlane"] = ":airplane: Cargo Plane incoming `{0}`",
                 ["CargoShip"] = ":ship: Cargo Ship incoming `{0}`",
+                ["Chat"] = ":speech_left: **{0}**: {1}",
+                ["ChatTeam"] = ":busts_in_silhouette: **{0}**: {1}",
                 ["Chinook"] = ":helicopter: Chinook 47 incoming `{0}`",
                 ["Christmas"] = ":christmas_tree: Christmas event started",
+                ["DangerousTreasuresEnded"] = ":pirate_flag: Dangerous Treasures event at `{0}` is ended",
+                ["DangerousTreasuresStarted"] = ":pirate_flag: Dangerous Treasures started at `{0}`",
+                ["Death"] = ":skull: `{0}` died",
+                ["DeathNotes"] = ":skull_crossbones: {0}",
+                ["Duel"] = ":crossed_swords: `{0}` has defeated `{1}` in a duel",
                 ["Easter"] = ":egg: Easter event started",
                 ["EasterWinner"] = ":egg: Easter event ended. The winner is `{0}`",
-                ["Halloween"] = ":mage: Halloween event started",
-                ["HalloweenWinner"] = ":mage: Halloween event ended. The winner is `{0}`",
-                ["Helicopter"] = ":crossed_swords: Helicopter incoming `{0}`",
+                ["Halloween"] = ":jack_o_lantern: Halloween event started",
+                ["HalloweenWinner"] = ":jack_o_lantern: Halloween event ended. The winner is `{0}`",
+                ["Helicopter"] = ":dagger: Helicopter incoming `{0}`",
                 ["Initialized"] = ":ballot_box_with_check: Server is online again!",
                 ["LockedCrate"] = ":package: Codelocked crate is here `{0}`",
-                ["PersonalHelicopter"] = ":crossed_swords: Personal Helicopter incoming `{0}`",
+                ["PersonalHelicopter"] = ":dagger: Personal Helicopter incoming `{0}`",
                 ["PlayerConnected"] = ":white_check_mark: {0} connected",
                 ["PlayerConnectedInfo"] = ":detective: {0} connected. SteamID: `{1}` IP: `{2}`",
                 ["PlayerDisconnected"] = ":x: {0} disconnected ({1})",
@@ -204,6 +260,7 @@ namespace Oxide.Plugins
                 ["Shutdown"] = ":stop_sign: Server is shutting down!",
                 ["SupplyDrop"] = ":parachute: SupplyDrop incoming at `{0}`",
                 ["SupplyDropLanded"] = ":gift: SupplyDrop landed at `{0}`",
+                ["SupplySignal"] = ":firecracker: SupplySignal was thrown by `{0}` at `{1}`",
 
                 ["Easy"] = "Easy",
                 ["Medium"] = "Medium",
@@ -220,52 +277,78 @@ namespace Oxide.Plugins
         private void OnEntitySpawned(BaseHelicopter entity)
         {
             NextTick(() => {
-                handleEntity(entity);
+                HandleEntity(entity);
             });
         }
 
         private void OnEntitySpawned(BradleyAPC entity)
         {
-            handleEntity(entity);
+            HandleEntity(entity);
         }
 
         private void OnEntitySpawned(CargoPlane entity)
         {
-            handleEntity(entity);
+            HandleEntity(entity);
         }
 
         private void OnEntitySpawned(CargoShip entity)
         {
-            handleEntity(entity);
+            HandleEntity(entity);
         }
 
         private void OnEntitySpawned(CH47HelicopterAIController entity)
         {
-            handleEntity(entity);
+            HandleEntity(entity);
         }
 
         private void OnEntitySpawned(EggHuntEvent entity)
         {
-            handleEntity(entity);
+            HandleEntity(entity);
         }
 
         private void OnEntitySpawned(HackableLockedCrate entity)
         {
-            handleEntity(entity);
+            HandleEntity(entity);
         }
 
         private void OnEntitySpawned(SantaSleigh entity)
         {
-            handleEntity(entity);
+            HandleEntity(entity);
         }
         private void OnEntitySpawned(SupplyDrop entity)
         {
-            handleEntity(entity);
+            HandleEntity(entity);
         }
 
         private void OnEntitySpawned(XMasRefill entity)
         {
-            handleEntity(entity);
+            HandleEntity(entity);
+        }
+
+        private void OnEntityDeath(BasePlayer player, HitInfo info)
+        {
+            if (player == null || info == null)
+            {
+                return;
+            }
+
+            if (_configData.PlayerDeathSettings.Enabled)
+            {
+                if (_configData.GlobalSettings.LoggingEnabled)
+                {
+                    Puts($"{player.displayName.Replace("*", "＊")} died.");
+                }
+
+                SendMessage(Lang("Death", null, player.displayName.Replace("*", "＊")), _configData.PlayerDeathSettings.WebhookURL);
+            }
+        }
+
+        private void OnDeathNotice(Dictionary<string, object> data, string message)
+        {
+            if (_configData.PlayerDeathNotesSettings.Enabled)
+            {
+                SendMessage(Lang("DeathNotes", null, StripRustTags(Formatter.ToPlaintext(message))), _configData.PlayerDeathNotesSettings.WebhookURL);
+            }
         }
 
         private void OnEntityKill(EggHuntEvent entity)
@@ -279,7 +362,7 @@ namespace Oxide.Plugins
             string winner;
             if (winners.Count > 0)
             {
-                winner = winners[0].displayName;
+                winner = winners[0].displayName.Replace("*", "＊");
             }
             else
             {
@@ -296,7 +379,7 @@ namespace Oxide.Plugins
                         Puts("Halloween Hunt Event has ended. The winner is " + winner);
                     }
 
-                    SendMsgToChannel(Lang("HalloweenWinner", null, winner), _configData.HalloweenSettings.WebhookURL);
+                    SendMessage(Lang("HalloweenWinner", null, winner), _configData.HalloweenSettings.WebhookURL);
                 }
             }
             else
@@ -308,10 +391,19 @@ namespace Oxide.Plugins
                         Puts("Egg Hunt Event has ended. The winner is " + winner);
                     }
 
-                    SendMsgToChannel(Lang("EasterWinner", null, winner), _configData.EasterSettings.WebhookURL);
+                    SendMessage(Lang("EasterWinner", null, winner), _configData.EasterSettings.WebhookURL);
                 }
             }
+        }
 
+        private void OnExplosiveThrown(BasePlayer player, SupplySignal entity)
+        {
+            HandleSupplySignal(player, entity);
+        }
+
+        private void OnExplosiveDropped(BasePlayer player, SupplySignal entity)
+        {
+            HandleSupplySignal(player, entity);
         }
 
         private void OnSupplyDropLanded(SupplyDrop entity)
@@ -328,118 +420,57 @@ namespace Oxide.Plugins
                     Puts("SupplyDrop landed at " + GetGridPosition(entity.transform.position));
                 }
 
-                SendMsgToChannel(Lang("SupplyDropLanded", null, GetGridPosition(entity.transform.position)), _configData.SupplyDropSettings.WebhookURL);
+                SendMessage(Lang("SupplyDropLanded", null, GetGridPosition(entity.transform.position)), _configData.SupplyDropSettings.WebhookURL);
                 _lastEntities.Add(entity.net.ID, Time.realtimeSinceStartup + 60);
+            }
+        }
+
+        private void OnDuelistDefeated(BasePlayer attacker, BasePlayer victim)
+        {
+            if (attacker == null || victim == null)
+            {
+                return;
+            }
+
+            if (_configData.DuelSettings.Enabled)
+            {
+                if (_configData.GlobalSettings.LoggingEnabled)
+                {
+                    Puts($"{attacker.displayName.Replace("*", "＊")} has defeated {victim.displayName.Replace("*", "＊")} in a duel");
+                }
+
+                SendMessage(Lang("Duel", null, attacker.displayName.Replace("*", "＊"), victim.displayName.Replace("*", "＊")), _configData.DuelSettings.WebhookURL);
             }
         }
 
         private void OnRaidableBaseStarted(Vector3 raidPos, int difficulty)
         {
-            if (raidPos == null)
-            {
-                PrintError("OnRaidableBaseStarted: raidPos == null");
-                return;
-            }
-
-            if (_configData.RaidableBasesSettings.Enabled)
-            {
-                string difficultyString;
-                switch (difficulty)
-                {
-                    case 0:
-                        difficultyString = "Easy";
-                        break;
-                    case 1:
-                        difficultyString = "Medium";
-                        break;
-                    case 2:
-                        difficultyString = "Hard";
-                        break;
-                    case 3:
-                        difficultyString = "Expert";
-                        break;
-                    case 4:
-                        difficultyString = "Nightmare";
-                        break;
-                    default:
-                        PrintError($"OnRaidableBaseStarted: Unknown difficulty: {difficulty}");
-                        return;
-                }
-
-                if (_configData.GlobalSettings.LoggingEnabled)
-                {
-                    Puts($"{difficultyString} " + " Raidable Base spawned at " + GetGridPosition(raidPos));
-                }
-
-                SendMsgToChannel(Lang("RaidableBaseStarted", null, GetGridPosition(raidPos), Lang(difficultyString)), _configData.RaidableBasesSettings.WebhookURL);
-            }
+            HandleRaidableBase(raidPos, difficulty, "RaidableBaseStarted");
         }
         private void OnRaidableBaseEnded(Vector3 raidPos, int difficulty)
         {
-            if (raidPos == null)
-            {
-                PrintError("OnRaidableBaseStarted: raidPos == null");
-                return;
-            }
-
-            if (_configData.RaidableBasesSettings.Enabled)
-            {
-                string difficultyString;
-                switch (difficulty)
-                {
-                    case 0:
-                        difficultyString = "Easy";
-                        break;
-                    case 1:
-                        difficultyString = "Medium";
-                        break;
-                    case 2:
-                        difficultyString = "Hard";
-                        break;
-                    case 3:
-                        difficultyString = "Expert";
-                        break;
-                    case 4:
-                        difficultyString = "Nightmare";
-                        break;
-                    default:
-                        PrintError($"OnRaidableBaseStarted: Unknown difficulty: {difficulty}");
-                        return;
-                }
-
-                if (_configData.GlobalSettings.LoggingEnabled)
-                {
-                    Puts($"{difficultyString} Raidable Base at {GetGridPosition(raidPos)} ended");
-                }
-
-                SendMsgToChannel(Lang("RaidableBaseEnded", null, GetGridPosition(raidPos), Lang(difficultyString)), _configData.RaidableBasesSettings.WebhookURL);
-            }
+            HandleRaidableBase(raidPos, difficulty, "RaidableBaseEnded");
         }
 
-        void OnPlayerConnected(BasePlayer player)
+        private void OnPlayerConnected(BasePlayer player)
         {
-            if (player == null || !player.IsConnected)
-            {
-                return;
-            }
-
             if (_configData.PlayerConnectedSettings.Enabled)
             {
                 if (_configData.GlobalSettings.LoggingEnabled)
                 {
-                    Puts($"Player {player.displayName} connected.");
+                    Puts($"Player {player.displayName.Replace("*", "＊")} connected.");
                 }
 
-                SendMsgToChannel(Lang("PlayerConnected", null, player.displayName), _configData.PlayerConnectedSettings.WebhookURL);
+                SendMessage(Lang("PlayerConnected", null, player.displayName.Replace("*", "＊")), _configData.PlayerConnectedSettings.WebhookURL);
             }
 
             if (_configData.PlayerConnectedInfoSettings.Enabled)
             {
-                SendMsgToChannel(Lang("PlayerConnectedInfo", null, player.displayName, player.UserIDString, player.net.connection.ipaddress.Split(':')[0]), _configData.PlayerConnectedInfoSettings.WebhookURL);
+                SendMessage(Lang("PlayerConnectedInfo", null, player.displayName.Replace("*", "＊"), player.UserIDString, player.net.connection.ipaddress.Split(':')[0]), _configData.PlayerConnectedInfoSettings.WebhookURL);
             }
         }
 
-        void OnPlayerDisconnected(BasePlayer player, string reason)
+        private void OnPlayerDisconnected(BasePlayer player, string reason)
         {
             if (player == null)
             {
@@ -450,18 +481,105 @@ namespace Oxide.Plugins
             {
                 if (_configData.GlobalSettings.LoggingEnabled)
                 {
-                    Puts($"Player {player.displayName} disconnected ({reason}).");
+                    Puts($"Player {player.displayName.Replace("*", "＊")} disconnected ({reason}).");
                 }
 
-                SendMsgToChannel(Lang("PlayerDisconnected", null, player.displayName, reason), _configData.PlayerConnectedSettings.WebhookURL);
+                SendMessage(Lang("PlayerDisconnected", null, player.displayName.Replace("*", "＊"), reason), _configData.PlayerConnectedSettings.WebhookURL);
             }
+        }
+
+        private void OnPlayerChat(BasePlayer player, string message, ConVar.Chat.ChatChannel channel)
+        {
+            if (player == null || string.IsNullOrWhiteSpace(message))
+            {
+                return;
+            }
+
+            if (BetterChatMute != null && BetterChatMute.IsLoaded)
+            {
+                if (BetterChatMute.Call<bool>("API_IsMuted", player.IPlayer))
+                {
+                    return;
+                }
+            }
+
+            message = message.Replace("@here", "here").Replace("@everyone", "everyone").Replace("*", "＊");
+
+            if (channel == ConVar.Chat.ChatChannel.Global && _configData.ChatSettings.Enabled)
+            {
+                SendMessage(Lang("Chat", null, player.displayName.Replace("*", "＊"), message), _configData.ChatSettings.WebhookURL);
+            }
+
+            if (channel == ConVar.Chat.ChatChannel.Team && _configData.ChatTeamSettings.Enabled)
+            {
+                SendMessage(Lang("ChatTeam", null, player.displayName.Replace("*", "＊"), message), _configData.ChatTeamSettings.WebhookURL);
+            }
+        }
+
+        private void OnDangerousEventStarted(Vector3 containerPos)
+        {
+            HandleDangerousTreasures(containerPos, "DangerousTreasuresStarted");
+        }
+        private void OnDangerousEventEnded(Vector3 containerPos)
+        {
+            HandleDangerousTreasures(containerPos, "DangerousTreasuresEnded");
         }
 
         #endregion Events Hooks
 
-        #region Helpers
+        #region Methods
 
-        private void handleEntity(BaseEntity baseEntity)
+        private void SendMessage(string message, string webhookUrl)
+        {
+
+            if (string.IsNullOrWhiteSpace(message))
+            {
+                PrintError("SendMessage: message is null or empty!");
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(webhookUrl))
+            {
+                PrintError("SendMessage: webhookUrl is null or empty!");
+                return;
+            }
+
+            DiscordMessage discordMessage = new DiscordMessage(message);
+
+            _queueMessages.Add(discordMessage, webhookUrl);
+
+            HandleQueue();
+        }
+
+        private void HandleQueue()
+        {
+
+            if (_queueProcessed.Count > 0)
+            {
+                return;
+            }
+
+            _queueProcessed = _queueMessages;
+            _queueMessages = new Dictionary<DiscordMessage, string> ();
+
+            timer.Repeat(1f, _queueProcessed.Count, () =>
+            {
+
+                foreach(KeyValuePair<DiscordMessage, string> message in _queueProcessed)
+                {
+                    SendDiscordMessage(message.Value, message.Key);
+                    _queueProcessed.Remove(message.Key);
+                    break;
+                }
+
+                if (_queueMessages.Count > 0 && _queueProcessed.Count == 0)
+                {
+                    HandleQueue();
+                }
+            });
+        }
+
+        private void HandleEntity(BaseEntity baseEntity)
         {
             if (baseEntity == null)
             {
@@ -471,14 +589,14 @@ namespace Oxide.Plugins
             EventType eventType = GetEventTypeFromEntity(baseEntity);
             if (eventType == EventType.None)
             {
-                PrintError("handleEntity: eventType == EventType.None ->" + baseEntity.ShortPrefabName);
-                return;                
+                PrintError("HandleEntity: eventType == EventType.None ->" + baseEntity.ShortPrefabName);
+                return;
             }
 
             var eventSettengs = GetEventSettings(eventType);
             if (eventSettengs == null)
             {
-                PrintError("handleEntity: eventSettengs == null");
+                PrintError("HandleEntity: eventSettengs == null");
                 return;
             }
 
@@ -500,18 +618,118 @@ namespace Oxide.Plugins
                                 Puts("Personal Helicopter spawned at " + GetGridPosition(baseEntity.transform.position));
                             }
 
-                            SendMsgToChannel(Lang("PersonalHelicopter", null, GetGridPosition(baseEntity.transform.position)), eventSettengs.WebhookURL);
+                            SendMessage(Lang("PersonalHelicopter", null, GetGridPosition(baseEntity.transform.position)), eventSettengs.WebhookURL);
                             return;
                         }
                     }
                 }
 
-                SendMsgToChannel(Lang(eventType.ToString(), null, GetGridPosition(baseEntity.transform.position)), eventSettengs.WebhookURL);
+                SendMessage(Lang(eventType.ToString(), null, GetGridPosition(baseEntity.transform.position)), eventSettengs.WebhookURL);
             }
         }
 
+        private void HandleSupplySignal(BasePlayer player, SupplySignal entity)
+        {
+            if (_configData.SupplyDropSettings.Enabled)
+            {
+                NextTick(() =>
+                {
+                    if (player != null && entity != null)
+                    {
+                        if (_configData.GlobalSettings.LoggingEnabled)
+                        {
+                            Puts($"SupplySignal was thrown by {player.displayName.Replace("*", "＊")} at {GetGridPosition(entity.transform.position)}");
+                        }
+
+                        SendMessage(Lang("SupplySignal", null, player.displayName.Replace("*", "＊"), GetGridPosition(entity.transform.position)), _configData.SupplyDropSettings.WebhookURL);
+                    }
+                });
+            }
+        }
+
+        private void HandleRaidableBase(Vector3 raidPos, int difficulty, string langKey)
+        {
+            if (raidPos == null)
+            {
+                PrintError($"{langKey}: raidPos == null");
+                return;
+            }
+
+            if (_configData.RaidableBasesSettings.Enabled)
+            {
+                string difficultyString;
+                switch (difficulty)
+                {
+                    case 0:
+                        difficultyString = "Easy";
+                        break;
+                    case 1:
+                        difficultyString = "Medium";
+                        break;
+                    case 2:
+                        difficultyString = "Hard";
+                        break;
+                    case 3:
+                        difficultyString = "Expert";
+                        break;
+                    case 4:
+                        difficultyString = "Nightmare";
+                        break;
+                    default:
+                        PrintError($"{langKey}: Unknown difficulty: {difficulty}");
+                        return;
+                }
+
+                if (_configData.GlobalSettings.LoggingEnabled)
+                {
+                    Puts(difficultyString + " Raidable Base at " + GetGridPosition(raidPos) + " is " + (langKey == "RaidableBaseStarted" ? "spawned" : "ended"));
+                }
+
+                SendMessage(Lang(langKey, null, GetGridPosition(raidPos), Lang(difficultyString)), _configData.RaidableBasesSettings.WebhookURL);
+            }
+        }
+
+        private void HandleDangerousTreasures(Vector3 containerPos, string langKey)
+        {
+            if (containerPos == null)
+            {
+                PrintError($"{langKey}: containerPos == null");
+                return;
+            }
+
+            if (_configData.DangerousTreasuresSettings.Enabled)
+            {
+                if (_configData.GlobalSettings.LoggingEnabled)
+                {
+                    Puts("Dangerous Treasures at " + GetGridPosition(containerPos) + " is " + (langKey == "DangerousTreasuresStarted" ? "spawned" : "ended"));
+                }
+
+                SendMessage(Lang(langKey, null, GetGridPosition(containerPos)), _configData.DangerousTreasuresSettings.WebhookURL);
+            }
+        }
+
+        #endregion Methods
+
+        #region Helpers
+
         private void UnsubscribeDisabled()
         {
+            if (!_configData.DangerousTreasuresSettings.Enabled)
+            {
+                Unsubscribe(nameof(OnDangerousEventEnded));
+                Unsubscribe(nameof(OnDangerousEventStarted));
+            }
+
+            if (!_configData.PlayerDeathNotesSettings.Enabled)
+            {
+                Unsubscribe(nameof(OnDeathNotice));
+            }
+
+            if (!_configData.PlayerDeathSettings.Enabled)
+            {
+                Unsubscribe(nameof(OnEntityDeath));
+            }
+
             if (!_configData.EasterSettings.Enabled &&
                 !_configData.HalloweenSettings.Enabled)
             {
@@ -533,10 +751,23 @@ namespace Oxide.Plugins
                 Unsubscribe(nameof(OnEntitySpawned));
             }
 
+            if (!_configData.SupplyDropSettings.Enabled)
+            {
+                Unsubscribe(nameof(OnExplosiveDropped));
+                Unsubscribe(nameof(OnExplosiveThrown));
+                Unsubscribe(nameof(OnSupplyDropLanded));
+            }
+
             if (!_configData.PlayerConnectedSettings.Enabled &&
                 !_configData.PlayerConnectedInfoSettings.Enabled)
             {
                 Unsubscribe(nameof(OnPlayerConnected));
+            }
+
+            if (!_configData.ChatSettings.Enabled &&
+                !_configData.ChatTeamSettings.Enabled)
+            {
+                Unsubscribe(nameof(OnPlayerChat));
             }
 
             if (!_configData.PlayerDisconnectedSettings.Enabled)
@@ -549,11 +780,6 @@ namespace Oxide.Plugins
                 Unsubscribe(nameof(OnRaidableBaseEnded));
                 Unsubscribe(nameof(OnRaidableBaseStarted));
             }
-
-            if (!_configData.SupplyDropSettings.Enabled)
-            {
-                Unsubscribe(nameof(OnSupplyDropLanded));
-            }
         }
 
         private static EventType GetEventTypeFromEntity(BaseEntity baseEntity)
@@ -562,14 +788,15 @@ namespace Oxide.Plugins
             if (baseEntity is BradleyAPC) return EventType.Bradley;
             if (baseEntity is CargoPlane) return EventType.CargoPlane;
             if (baseEntity is CargoShip) return EventType.CargoShip;
+            if (baseEntity is HackableLockedCrate) return EventType.LockedCrate;
+            if (baseEntity is SupplyDrop) return EventType.SupplyDrop;
+            if (baseEntity is SupplySignal) return EventType.SupplyDrop;
+            if (baseEntity is CH47HelicopterAIController) return EventType.Chinook;
+            if (baseEntity is SantaSleigh) return EventType.SantaSleigh;
             if (baseEntity is HalloweenHunt) return EventType.Halloween;
             if (baseEntity is EggHuntEvent) return EventType.Easter;
-            if (baseEntity is HackableLockedCrate) return EventType.LockedCrate;
-            if (baseEntity is SantaSleigh) return EventType.SantaSleigh;
-            if (baseEntity is SupplyDrop) return EventType.SupplyDrop;
             if (baseEntity is XMasRefill) return EventType.Christmas;
-            var controller = baseEntity as CH47HelicopterAIController;
-            if (controller != null && controller.landingTarget == Vector3.zero) return EventType.Chinook;
+
             return EventType.None;
         }
 
@@ -582,6 +809,9 @@ namespace Oxide.Plugins
                 case EventType.CargoShip: return _configData.CargoShipSettings;
                 case EventType.Chinook: return _configData.ChinookSettings;
                 case EventType.Christmas: return _configData.ChristmasSettings;
+                case EventType.DangerousTreasures: return _configData.DangerousTreasuresSettings;
+                case EventType.Death: return _configData.PlayerDeathSettings;
+                case EventType.DeathNotes: return _configData.PlayerDeathNotesSettings;
                 case EventType.Easter: return _configData.EasterSettings;
                 case EventType.Halloween: return _configData.HalloweenSettings;
                 case EventType.Helicopter: return _configData.HelicopterSettings;
@@ -602,13 +832,17 @@ namespace Oxide.Plugins
         {
             if (_lastEntities != null)
             {
+                Dictionary<uint, float> actualized = new Dictionary<uint, float> ();
+
                 foreach (var entity in _lastEntities)
                 {
-                    if (entity.Value < Time.realtimeSinceStartup)
+                    if (entity.Value > Time.realtimeSinceStartup)
                     {
-                        _lastEntities.Remove(entity.Key);
+                        actualized.Add(entity.Key, entity.Value);
                     }
                 }
+
+                _lastEntities = actualized;
 
                 if (_lastEntities.ContainsKey(networkId))
                 {
@@ -619,45 +853,46 @@ namespace Oxide.Plugins
             return false;
         }
 
+        private string StripRustTags(string original)
+        {
+            if (string.IsNullOrEmpty(original))
+            {
+                return string.Empty;
+            }
+
+            foreach (string tag in _tags)
+            {
+                original = original.Replace(tag, "`");
+            }
+
+            foreach (Regex regexTag in _regexTags)
+            {
+                original = regexTag.Replace(original, "`");
+            }
+
+            return original;
+        }
+
         private string GetGridPosition(Vector3 pos)
         {
             const float gridCellSize = 146.3f;
-            
+
             int maxGridSize = Mathf.FloorToInt(World.Size / gridCellSize) - 1;
             float halfWorldSize = World.Size / 2f;
             int xGrid = Mathf.Clamp(Mathf.FloorToInt((pos.x + halfWorldSize) / gridCellSize),0, maxGridSize);
             int zGrid = Mathf.Clamp(maxGridSize - Mathf.FloorToInt((pos.z + halfWorldSize) / gridCellSize),0, maxGridSize);
-            
+
             string extraA = string.Empty;
             if (xGrid > 26)
             {
                 extraA = $"{(char) ('A' + (xGrid / 26 - 1))}";
             }
-            
+
             return $"{extraA}{(char) ('A' + xGrid % 26)}{zGrid.ToString()}";
         }
 
-        private void SendMsgToChannel(string message, string webhookUrl)
-        {
-            if (string.IsNullOrWhiteSpace(message) || string.IsNullOrEmpty(message))
-            {
-                PrintError("SendMsgToChannel: message is null or empty!");
-                return;
-            }
-
-            if (string.IsNullOrWhiteSpace(webhookUrl) || string.IsNullOrEmpty(webhookUrl))
-            {
-                PrintError("SendMsgToChannel: webhookUrl is null or empty!");
-                return;
-            }
-
-            DiscordMessage discordMessage = new DiscordMessage(message);
-            
-            SendDiscordMessage(webhookUrl, discordMessage);
-        }
-
         #endregion Helpers
-        
+
         #region Discord Embed
 
         #region Send Embed Methods
