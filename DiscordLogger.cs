@@ -11,7 +11,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Discord Logger", "MON@H", "2.0.1")]
+    [Info("Discord Logger", "MON@H", "2.0.2")]
     [Description("Logs events to Discord channels using webhooks")]
     class DiscordLogger : RustPlugin
     {
@@ -81,7 +81,12 @@ namespace Oxide.Plugins
             {
                 LogToConsole("Server is shutting down!");
 
-                DiscordSendMessage(_configData.ServerStateSettings.WebhookURL, new DiscordMessage(Lang(LangKeys.Event.Shutdown)));
+                string url = GetWebhookURL(_configData.ServerStateSettings.WebhookURL);
+
+                if (!string.IsNullOrEmpty(url))
+                {
+                    webrequest.Enqueue(url, new DiscordMessage(Lang(LangKeys.Event.Shutdown)).ToJson(), DiscordSendMessageCallback, null, RequestMethod.POST, _headers);
+                }
             }
         }
 
@@ -1084,10 +1089,7 @@ namespace Oxide.Plugins
 
         private void DiscordSendMessage(string message, string webhookUrl, bool stripTags = false)
         {
-            if (string.IsNullOrWhiteSpace(webhookUrl))
-            {
-                webhookUrl = _configData.GlobalSettings.DefaultWebhookURL;
-            }
+            webhookUrl = GetWebhookURL(webhookUrl);
 
             if (string.IsNullOrWhiteSpace(webhookUrl))
             {
@@ -1598,6 +1600,16 @@ namespace Oxide.Plugins
             }
 
             return text;
+        }
+
+        private string GetWebhookURL(string url)
+        {
+            if (string.IsNullOrEmpty(url))
+            {
+                return _configData.GlobalSettings.DefaultWebhookURL;
+            }
+
+            return url;
         }
 
         private string GetGridPosition(Vector3 position) => PhoneController.PositionToGridCoord(position);
