@@ -1,4 +1,4 @@
-using Newtonsoft.Json;
+﻿using Newtonsoft.Json;
 using Oxide.Core.Libraries.Covalence;
 using Oxide.Core.Libraries;
 using Oxide.Core.Plugins;
@@ -11,7 +11,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Discord Logger", "MON@H", "2.0.10")]
+    [Info("Discord Logger", "MON@H", "2.0.11")]
     [Description("Logs events to Discord channels using webhooks")]
     class DiscordLogger : RustPlugin
     {
@@ -19,12 +19,14 @@ namespace Oxide.Plugins
 
         [PluginReference] private Plugin AntiSpam, BetterChatMute, CallHeli, PersonalHeli, UFilter;
 
-        private readonly Queue<QueuedMessage> _queue = new Queue<QueuedMessage>();
+        private readonly Hash<uint, CargoShip> _cargoShips = new Hash<uint, CargoShip>();
+        private readonly List<uint> _listBadCargoShips = new List<uint>();
         private readonly List<uint> _listSupplyDrops = new List<uint>();
+        private readonly Queue<QueuedMessage> _queue = new Queue<QueuedMessage>();
         private readonly StringBuilder _sb = new StringBuilder();
 
-        private int _retryCount = 0;
         private EventSettings _eventSettings;
+        private int _retryCount = 0;
         private object _resultCall;
         private QueuedMessage _nextMessage;
         private QueuedMessage _queuedMessage;
@@ -33,6 +35,8 @@ namespace Oxide.Plugins
         private Timer _timerQueue;
         private Timer _timerQueueCooldown;
         private uint _entityID;
+        private Vector3 _locationLargeOilRig;
+        private Vector3 _locationOilRig;
 
         private readonly List<Regex> _regexTags = new List<Regex>
         {
@@ -63,6 +67,14 @@ namespace Oxide.Plugins
             Updated,
         }
 
+        private class Response {
+            [JsonProperty("country")]
+            public string Country { get; set; }
+
+            [JsonProperty("countryCode")]
+            public string CountryCode { get; set; }
+        }
+
         #endregion Variables
 
         #region Initialization
@@ -86,6 +98,7 @@ namespace Oxide.Plugins
                 DiscordSendMessage(Lang(LangKeys.Event.Initialized), _configData.ServerStateSettings.WebhookURL);
             }
 
+            CacheOilRigsLocation();
             SubscribeHooks();
         }
 
@@ -401,6 +414,7 @@ namespace Oxide.Plugins
                 public const string NTeleportation = Base + nameof(NTeleportation);
                 public const string PersonalHelicopter = Base + nameof(PersonalHelicopter);
                 public const string PrivateMessage = Base + nameof(PrivateMessage);
+                public const string RaidableBaseCompleted = Base + nameof(RaidableBaseCompleted);
                 public const string RaidableBaseEnded = Base + nameof(RaidableBaseEnded);
                 public const string RaidableBaseStarted = Base + nameof(RaidableBaseStarted);
                 public const string RustKits = Base + nameof(RustKits);
@@ -415,6 +429,7 @@ namespace Oxide.Plugins
             public static class Format
             {
                 private const string Base = nameof(Format) + ".";
+                public const string CargoShip = Base + nameof(CargoShip);
                 public const string Created = Base + nameof(Created);
                 public const string Day = Base + nameof(Day);
                 public const string Days = Base + nameof(Days);
@@ -424,10 +439,12 @@ namespace Oxide.Plugins
                 public const string Hard = Base + nameof(Hard);
                 public const string Hour = Base + nameof(Hour);
                 public const string Hours = Base + nameof(Hours);
+                public const string LargeOilRig = Base + nameof(LargeOilRig);
                 public const string Medium = Base + nameof(Medium);
                 public const string Minute = Base + nameof(Minute);
                 public const string Minutes = Base + nameof(Minutes);
                 public const string Nightmare = Base + nameof(Nightmare);
+                public const string OilRig = Base + nameof(OilRig);
                 public const string Second = Base + nameof(Second);
                 public const string Seconds = Base + nameof(Seconds);
                 public const string Updated = Base + nameof(Updated);
@@ -473,6 +490,7 @@ namespace Oxide.Plugins
                 [LangKeys.Event.UserNameUpdated] = ":label: {time} `{0}` changed name to `{1}` SteamID: `{2}`",
                 [LangKeys.Event.UserUnbanned] = ":ok: {time} Player `{0}` SteamID: `{1}` IP: `{2}` was unbanned",
                 [LangKeys.Event.UserUnmuted] = ":speaker: {time} `{0}` was unmuted `{1}`",
+                [LangKeys.Format.CargoShip] = "Cargo Ship",
                 [LangKeys.Format.Created] = "created",
                 [LangKeys.Format.Day] = "day",
                 [LangKeys.Format.Days] = "days",
@@ -482,10 +500,12 @@ namespace Oxide.Plugins
                 [LangKeys.Format.Hard] = "Hard",
                 [LangKeys.Format.Hour] = "hour",
                 [LangKeys.Format.Hours] = "hours",
+                [LangKeys.Format.LargeOilRig] = "Large Oil Rig",
                 [LangKeys.Format.Medium] = "Medium",
                 [LangKeys.Format.Minute] = "minute",
                 [LangKeys.Format.Minutes] = "minutes",
                 [LangKeys.Format.Nightmare] = "Nightmare",
+                [LangKeys.Format.OilRig] = "Oil Rig",
                 [LangKeys.Format.Second] = "second",
                 [LangKeys.Format.Seconds] = "seconds",
                 [LangKeys.Format.Updated] = "updated",
@@ -510,7 +530,8 @@ namespace Oxide.Plugins
                 [LangKeys.Plugin.NTeleportation] = ":cyclone: {time} `{0}` teleported from `{1}` `{2}` to `{3}` `{4}`",
                 [LangKeys.Plugin.PersonalHelicopter] = ":dagger: {time} Personal Helicopter incoming `{0}`",
                 [LangKeys.Plugin.PrivateMessage] = ":envelope: {time} PM from `{0}` to `{1}`: {2}",
-                [LangKeys.Plugin.RaidableBaseEnded] = ":homes: {time} {1} Raidable Base at `{0}` is ended",
+                [LangKeys.Plugin.RaidableBaseCompleted] = ":homes: {time} {1} Raidable Base owned by {2} at `{0}` has been raided by **{3}**",
+                [LangKeys.Plugin.RaidableBaseEnded] = ":homes: {time} {1} Raidable Base at `{0}` has ended",
                 [LangKeys.Plugin.RaidableBaseStarted] = ":homes: {time} {1} Raidable Base spawned at `{0}`",
                 [LangKeys.Plugin.RustKits] = ":shopping_bags: {time} `{0}` redeemed a kit `{1}`",
                 [LangKeys.Plugin.TimedGroupAdded] = ":timer: {time} `{0}` `{1}` is added to `{2}` for {3}",
@@ -599,7 +620,7 @@ namespace Oxide.Plugins
 
         private void OnDuelistDefeated(BasePlayer attacker, BasePlayer victim)
         {
-            if (attacker == null || victim == null)
+            if (!attacker.IsValid() || !victim.IsValid())
             {
                 return;
             }
@@ -634,7 +655,7 @@ namespace Oxide.Plugins
 
         private void OnEntityDeath(BasePlayer player, HitInfo info)
         {
-            if (player == null || info == null)
+            if (!player.IsValid() || info == null)
             {
                 return;
             }
@@ -651,7 +672,7 @@ namespace Oxide.Plugins
 
         private void OnEntityKill(EggHuntEvent entity)
         {
-            if (entity == null)
+            if (!entity.IsValid())
             {
                 return;
             }
@@ -685,6 +706,14 @@ namespace Oxide.Plugins
 
                     DiscordSendMessage(Lang(LangKeys.Event.EasterWinner, null, winner), _configData.EasterSettings.WebhookURL);
                 }
+            }
+        }
+
+        private void OnEntityKill(CargoShip cargoShip)
+        {
+            if (cargoShip.IsValid())
+            {
+                _cargoShips.Remove(cargoShip.net.ID);
             }
         }
 
@@ -723,7 +752,31 @@ namespace Oxide.Plugins
 
                 if (!_configData.GlobalSettings.HideAdmin || !player.IsAdmin)
                 {
-                    DiscordSendMessage(Lang(LangKeys.Event.PlayerConnected, null, ReplaceChars(player.displayName)), _configData.PlayerConnectedSettings.WebhookURL);
+                    StringBuilder sb = new StringBuilder();
+
+                    sb.Append(Lang(LangKeys.Event.PlayerConnected, null, ReplaceChars(player.displayName)));
+
+                    if (player.net.connection.ipaddress.StartsWith("127.")
+                    || player.net.connection.ipaddress.StartsWith("10.")
+                    || player.net.connection.ipaddress.StartsWith("172.16.")
+                    || player.net.connection.ipaddress.StartsWith("192.168."))
+                    {
+                        sb.Append(" :signal_strength:");
+                        DiscordSendMessage(sb.ToString(), _configData.PlayerConnectedSettings.WebhookURL);
+                    }
+                    else
+                    {
+                        webrequest.Enqueue($"http://ip-api.com/json/{player.net.connection.ipaddress.Split(':')[0]}", null, (code, response) => {
+                            if (code == 200 && response != null)
+                            {
+                                sb.Append(" :flag_");
+                                sb.Append(JsonConvert.DeserializeObject<Response>(response).CountryCode.ToLower());
+                                sb.Append(":");
+                            }
+
+                            DiscordSendMessage(sb.ToString(), _configData.PlayerConnectedSettings.WebhookURL);
+                        }, this, RequestMethod.GET);
+                    }
                 }
             }
 
@@ -735,7 +788,7 @@ namespace Oxide.Plugins
 
         private void OnPlayerDisconnected(BasePlayer player, string reason)
         {
-            if (player == null)
+            if (!player.IsValid())
             {
                 return;
             }
@@ -750,7 +803,7 @@ namespace Oxide.Plugins
 
         private void OnPlayerChat(BasePlayer player, string message, ConVar.Chat.ChatChannel channel)
         {
-            if (player == null || string.IsNullOrWhiteSpace(message))
+            if (!player.IsValid() || string.IsNullOrWhiteSpace(message))
             {
                 return;
             }
@@ -804,14 +857,21 @@ namespace Oxide.Plugins
 
             message = ReplaceChars(message);
 
-            if (channel == ConVar.Chat.ChatChannel.Global && _configData.ChatSettings.Enabled)
+            switch (channel)
             {
-                DiscordSendMessage(Lang(LangKeys.Event.Chat, null, ReplaceChars(player.displayName), message), _configData.ChatSettings.WebhookURL);
-            }
-
-            if (channel == ConVar.Chat.ChatChannel.Team && _configData.ChatTeamSettings.Enabled)
-            {
-                DiscordSendMessage(Lang(LangKeys.Event.ChatTeam, null, ReplaceChars(player.displayName), message), _configData.ChatTeamSettings.WebhookURL);
+                case ConVar.Chat.ChatChannel.Global:
+                case ConVar.Chat.ChatChannel.Local:
+                    if (_configData.ChatSettings.Enabled)
+                    {
+                        DiscordSendMessage(Lang(LangKeys.Event.Chat, null, ReplaceChars(player.displayName), message), _configData.ChatSettings.WebhookURL);
+                    }
+                    break;
+                case ConVar.Chat.ChatChannel.Team:
+                    if (_configData.ChatTeamSettings.Enabled)
+                    {
+                        DiscordSendMessage(Lang(LangKeys.Event.ChatTeam, null, ReplaceChars(player.displayName), message), _configData.ChatTeamSettings.WebhookURL);
+                    }
+                    break;
             }
         }
 
@@ -865,6 +925,11 @@ namespace Oxide.Plugins
             HandleRaidableBase(raidPos, difficulty, LangKeys.Plugin.RaidableBaseEnded);
         }
 
+        private void OnRaidableBaseCompleted(Vector3 raidPos, int difficulty, bool allowPVP, string id, float spawnTime, float despawnTime, float loadTime, ulong ownerId, BasePlayer owner, List<BasePlayer> raiders)
+        {
+            HandleRaidableBase(raidPos, difficulty, LangKeys.Plugin.RaidableBaseCompleted, owner, raiders);
+        }
+
         private void OnRconConnection(IPAddress ip)
         {
             LogToConsole($"RCON connection is opened from {ip}");
@@ -894,7 +959,7 @@ namespace Oxide.Plugins
 
         private void OnSupplyDropLanded(SupplyDrop entity)
         {
-            if (entity == null || _listSupplyDrops.Contains(entity.net.ID))
+            if (!entity.IsValid() || _listSupplyDrops.Contains(entity.net.ID))
             {
                 return;
             }
@@ -995,7 +1060,7 @@ namespace Oxide.Plugins
         private void OnTeamLeave(RelationshipManager.PlayerTeam team, BasePlayer player)
         {
             NextTick( () => {
-                if (team.members.Count > 0)
+                if (team?.members?.Count > 0)
                 {
                     HandleTeam(team, TeamEventType.Updated);
                 }
@@ -1267,10 +1332,12 @@ namespace Oxide.Plugins
 
         private void HandleEntity(BaseEntity baseEntity)
         {
-            if (baseEntity == null)
+            if (!baseEntity.IsValid())
             {
                 return;
             }
+
+            Vector3 position = baseEntity.transform.position;
 
             if (baseEntity is BaseHelicopter)
             {
@@ -1281,31 +1348,38 @@ namespace Oxide.Plugins
             {
                 _langKey = LangKeys.Event.Bradley;
                 _eventSettings = _configData.BradleySettings;
-                LogToConsole($"BradleyAPC spawned at {GetGridPosition(baseEntity.transform.position)}");
+                LogToConsole($"BradleyAPC spawned at {GetGridPosition(position)}");
             }
             else if (baseEntity is CargoPlane)
             {
                 _langKey = LangKeys.Event.CargoPlane;
                 _eventSettings = _configData.CargoPlaneSettings;
-                LogToConsole($"CargoPlane spawned at {GetGridPosition(baseEntity.transform.position)}");
+                LogToConsole($"CargoPlane spawned at {GetGridPosition(position)}");
             }
             else if (baseEntity is CargoShip)
             {
                 _langKey = LangKeys.Event.CargoShip;
                 _eventSettings = _configData.CargoShipSettings;
-                LogToConsole($"CargoShip spawned at {GetGridPosition(baseEntity.transform.position)}");
+                LogToConsole($"CargoShip spawned at {GetGridPosition(position)}");
+
+                NextTick( () => {
+                    if (baseEntity.IsValid() && !_cargoShips.ContainsKey(baseEntity.net.ID))
+                    {
+                        _cargoShips[baseEntity.net.ID] = (CargoShip)baseEntity;
+                    }
+                });
             }
             else if (baseEntity is CH47HelicopterAIController)
             {
                 _langKey = LangKeys.Event.Chinook;
                 _eventSettings = _configData.ChinookSettings;
-                LogToConsole($"CH47Helicopter spawned at {GetGridPosition(baseEntity.transform.position)}");
+                LogToConsole($"CH47Helicopter spawned at {GetGridPosition(position)}");
             }
             else if (baseEntity is HalloweenHunt)
             {
                 _langKey = LangKeys.Event.Halloween;
                 _eventSettings = _configData.HalloweenSettings;
-                LogToConsole($"HalloweenHunt spawned at {GetGridPosition(baseEntity.transform.position)}");
+                LogToConsole($"HalloweenHunt spawned at {GetGridPosition(position)}");
             }
             else if (baseEntity is EggHuntEvent)
             {
@@ -1317,25 +1391,25 @@ namespace Oxide.Plugins
             {
                 _langKey = LangKeys.Event.LockedCrate;
                 _eventSettings = _configData.LockedCrateSettings;
-                LogToConsole($"HackableLockedCrate spawned at {GetGridPosition(baseEntity.transform.position)}");
+                LogToConsole($"HackableLockedCrate spawned at {GetGridPosition(position)}");
             }
             else if (baseEntity is SantaSleigh)
             {
                 _langKey = LangKeys.Event.SantaSleigh;
                 _eventSettings = _configData.SantaSleighSettings;
-                LogToConsole($"SantaSleigh spawned at {GetGridPosition(baseEntity.transform.position)}");
+                LogToConsole($"SantaSleigh spawned at {GetGridPosition(position)}");
             }
             else if (baseEntity is SupplyDrop)
             {
                 _langKey = LangKeys.Event.SupplyDrop;
                 _eventSettings = _configData.SupplyDropSettings;
-                LogToConsole($"SupplyDrop spawned at {GetGridPosition(baseEntity.transform.position)}");
+                LogToConsole($"SupplyDrop spawned at {GetGridPosition(position)}");
             }
             else if (baseEntity is SupplySignal)
             {
                 _langKey = LangKeys.Event.SupplySignal;
                 _eventSettings = _configData.SupplyDropSettings;
-                LogToConsole($"SupplySignal dropped at {GetGridPosition(baseEntity.transform.position)}");
+                LogToConsole($"SupplySignal dropped at {GetGridPosition(position)}");
             }
             else if (baseEntity is XMasRefill)
             {
@@ -1348,16 +1422,15 @@ namespace Oxide.Plugins
             {
                 if (baseEntity is BaseHelicopter)
                 {
-
                     if (IsPluginLoaded(CallHeli))
                     {
                         _resultCall = CallHeli.Call("IsPersonal", baseEntity);
 
                         if (_resultCall is bool && (bool)_resultCall)
                         {
-                            LogToConsole("Personal Helicopter spawned at " + GetGridPosition(baseEntity.transform.position));
+                            LogToConsole("Personal Helicopter spawned at " + GetGridPosition(position));
 
-                            DiscordSendMessage(Lang(LangKeys.Plugin.PersonalHelicopter, null, GetGridPosition(baseEntity.transform.position)), _eventSettings.WebhookURL);
+                            DiscordSendMessage(Lang(LangKeys.Plugin.PersonalHelicopter, null, GetGridPosition(position)), _eventSettings.WebhookURL);
                             return;
                         }
                     }
@@ -1368,17 +1441,23 @@ namespace Oxide.Plugins
 
                         if (_resultCall is bool && (bool)_resultCall)
                         {
-                            LogToConsole("Personal Helicopter spawned at " + GetGridPosition(baseEntity.transform.position));
+                            LogToConsole("Personal Helicopter spawned at " + GetGridPosition(position));
 
-                            DiscordSendMessage(Lang(LangKeys.Plugin.PersonalHelicopter, null, GetGridPosition(baseEntity.transform.position)), _eventSettings.WebhookURL);
+                            DiscordSendMessage(Lang(LangKeys.Plugin.PersonalHelicopter, null, GetGridPosition(position)), _eventSettings.WebhookURL);
                             return;
                         }
                     }
 
-                    LogToConsole("BaseHelicopter spawned at " + GetGridPosition(baseEntity.transform.position));
+                    LogToConsole("BaseHelicopter spawned at " + GetGridPosition(position));
                 }
 
-                DiscordSendMessage(Lang(_langKey, null, GetGridPosition(baseEntity.transform.position)), _eventSettings.WebhookURL);
+                if (baseEntity is HackableLockedCrate)
+                {
+                    DiscordSendMessage(Lang(_langKey, null, GetHackableLockedCratePosition(position)), _eventSettings.WebhookURL);
+                    return;
+                }
+
+                DiscordSendMessage(Lang(_langKey, null, GetGridPosition(position)), _eventSettings.WebhookURL);
             }
         }
 
@@ -1397,7 +1476,7 @@ namespace Oxide.Plugins
             }
         }
 
-        private void HandleRaidableBase(Vector3 raidPos, int difficulty, string langKey)
+        private void HandleRaidableBase(Vector3 raidPos, int difficulty, string langKey, BasePlayer owner = null, List<BasePlayer> raiders = null)
         {
             if (raidPos == null)
             {
@@ -1431,9 +1510,27 @@ namespace Oxide.Plugins
                     return;
             }
 
-            LogToConsole(difficultyString + " Raidable Base at " + GetGridPosition(raidPos) + " is " + (langKey == LangKeys.Plugin.RaidableBaseStarted ? "spawned" : "ended"));
-
-            DiscordSendMessage(Lang(langKey, null, GetGridPosition(raidPos), Lang(difficultyString)), _configData.RaidableBasesSettings.WebhookURL);
+            switch (langKey)
+            {
+                case LangKeys.Plugin.RaidableBaseCompleted:
+                    _sb.Clear();
+                    for (int i = 0; i < raiders.Count; i++)
+                    {
+                        if (i > 0)
+                        {
+                            _sb.Append(", ");
+                        }
+                        _sb.Append(raiders[i].displayName);
+                    }
+                    LogToConsole($"{difficultyString} Raidable Base owned by {owner.displayName} at {GetGridPosition(raidPos)} has been raided by {_sb.ToString()}");
+                    DiscordSendMessage(Lang(langKey, null, GetGridPosition(raidPos), Lang(difficultyString), owner.displayName, _sb.ToString()), _configData.RaidableBasesSettings.WebhookURL);
+                    break;
+                case LangKeys.Plugin.RaidableBaseEnded:
+                case LangKeys.Plugin.RaidableBaseStarted:
+                    LogToConsole(difficultyString + " Raidable Base at " + GetGridPosition(raidPos) + " has " + (langKey == LangKeys.Plugin.RaidableBaseStarted ? "spawned" : "ended"));
+                    DiscordSendMessage(Lang(langKey, null, GetGridPosition(raidPos), Lang(difficultyString)), _configData.RaidableBasesSettings.WebhookURL);
+                    break;
+            }
         }
 
         private void HandleDangerousTreasures(Vector3 containerPos, string langKey)
@@ -1474,11 +1571,11 @@ namespace Oxide.Plugins
         {
             _sb.Clear();
 
-            BasePlayer player = BasePlayer.FindByID(team.teamLeader);
+            BasePlayer player = RelationshipManager.FindByID(team.teamLeader);
 
-            if (player == null)
+            if (!player.IsValid())
             {
-                player = BasePlayer.FindAwakeOrSleeping(team.teamLeader.ToString());
+                return;
             }
 
             _sb.AppendLine("```cs");
@@ -1499,11 +1596,11 @@ namespace Oxide.Plugins
 
             foreach (ulong userID in team.members)
             {
-                player = BasePlayer.FindByID(userID);
+                player = RelationshipManager.FindByID(userID);
 
-                if (player == null)
+                if (!player.IsValid())
                 {
-                    player = BasePlayer.FindAwakeOrSleeping(userID.ToString());
+                    continue;
                 }
 
                 _sb.AppendLine();
@@ -1533,6 +1630,67 @@ namespace Oxide.Plugins
             LogToConsole($"Team was {eventType}\n{_sb.ToString()}");
 
             DiscordSendMessage(Lang(LangKeys.Event.Team, null, eventType, _sb.ToString()), _configData.TeamsSettings.WebhookURL);
+        }
+
+        private void CacheOilRigsLocation()
+        {
+            foreach (MonumentInfo monument in TerrainMeta.Path.Monuments)
+            {
+                if (!monument.shouldDisplayOnMap)
+                {
+                    continue;
+                }
+
+                switch (monument.displayPhrase.english)
+                {
+                    case "Large Oil Rig":
+                        _locationLargeOilRig = monument.transform.position;
+                        break;
+                    case "Oil Rig":
+                        _locationOilRig = monument.transform.position;
+                        break;
+                }
+            }
+        }
+
+        private string GetHackableLockedCratePosition(Vector3 position)
+        {
+            if (Vector3.Distance(position, _locationOilRig) < 51f)
+            {
+                return Lang(LangKeys.Format.OilRig);
+            }
+
+            if (Vector3.Distance(position, _locationLargeOilRig) < 51f)
+            {
+                return Lang(LangKeys.Format.LargeOilRig);
+            }
+
+            try
+            {
+                foreach (KeyValuePair<uint, CargoShip> cargoShip in _cargoShips)
+                {
+                    if (!cargoShip.Value.IsValid() || cargoShip.Value.IsDestroyed)
+                    {
+                        _listBadCargoShips.Add(cargoShip.Key);
+                        continue;
+                    }
+
+                    if (Vector3.Distance(position, cargoShip.Value.transform.position) < 85f)
+                    {
+                        return Lang(LangKeys.Format.CargoShip);
+                    }
+                }
+            }
+            finally
+            {
+                for (int i = 0; i < _listBadCargoShips.Count; i++)
+                {
+                    _cargoShips.Remove(_listBadCargoShips[i]);
+                }
+                _listBadCargoShips.Clear();
+            }
+
+            return GetGridPosition(position);
         }
 
         #endregion Core Methods
@@ -1570,6 +1728,7 @@ namespace Oxide.Plugins
             Unsubscribe(nameof(OnPMProcessed));
             Unsubscribe(nameof(OnRadarActivated));
             Unsubscribe(nameof(OnRadarDeactivated));
+            Unsubscribe(nameof(OnRaidableBaseCompleted));
             Unsubscribe(nameof(OnRaidableBaseEnded));
             Unsubscribe(nameof(OnRaidableBaseStarted));
             Unsubscribe(nameof(OnRconCommand));
@@ -1643,7 +1802,8 @@ namespace Oxide.Plugins
             }
 
             if (_configData.EasterSettings.Enabled
-             || _configData.HalloweenSettings.Enabled)
+             || _configData.HalloweenSettings.Enabled
+             || _configData.LockedCrateSettings.Enabled)
             {
                 Subscribe(nameof(OnEntityKill));
             }
@@ -1734,6 +1894,7 @@ namespace Oxide.Plugins
 
             if (_configData.RaidableBasesSettings.Enabled)
             {
+                Subscribe(nameof(OnRaidableBaseCompleted));
                 Subscribe(nameof(OnRaidableBaseEnded));
                 Subscribe(nameof(OnRaidableBaseStarted));
             }
@@ -1927,6 +2088,9 @@ namespace Oxide.Plugins
                     break;
                 case 500:
                     message = "There are some issues with Discord server (500 Internal Server Error)";
+                    break;
+                case 502:
+                    message = "There are some issues with Discord server (502 Bad Gateway)";
                     break;
                 default:
                     message = $"DiscordSendMessageCallback: code = {code} message = {message}";
