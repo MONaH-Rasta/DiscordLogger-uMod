@@ -2,15 +2,17 @@ using Newtonsoft.Json;
 using Oxide.Core.Libraries.Covalence;
 using Oxide.Core.Libraries;
 using Oxide.Core.Plugins;
+using Oxide.Core;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using System.Text;
+using System;
 using Time = UnityEngine.Time;
 using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Discord Events", "MON@H", "1.2.4")]
+    [Info("Discord Events", "MON@H", "1.2.5")]
     [Description("Displays events to a discord channel")]
     class DiscordEvents : CovalencePlugin
     {
@@ -21,6 +23,13 @@ namespace Oxide.Plugins
         private Hash<DiscordMessage, string> _queueMessages = new Hash<DiscordMessage, string>();
         private Hash<DiscordMessage, string> _queueProcessed = new Hash<DiscordMessage, string>();
         private Hash<uint, float> _lastEntities = new Hash<uint, float>();
+
+        private UFilterStoredData _uFilterStoredData;
+
+        private class UFilterStoredData
+        {
+            public List<string> Profanities = new List<string>();
+        }
 
         private readonly List<Regex> _regexTags = new List<Regex>
         {
@@ -84,6 +93,11 @@ namespace Oxide.Plugins
                 }
 
                 SendMessage(Lang("Initialized"), _configData.ServerStateSettings.WebhookURL);
+            }
+
+            if (_configData.GlobalSettings.UseUFilter)
+            {
+                _uFilterStoredData = Interface.Oxide.DataFileSystem.ReadObject<UFilterStoredData>("UFilter");
             }
         }
 
@@ -175,6 +189,9 @@ namespace Oxide.Plugins
             [JsonProperty(PropertyName = "SantaSleigh settings")]
             public EventSettings SantaSleighSettings = new EventSettings();
 
+            [JsonProperty(PropertyName = "Server messages settings")]
+            public EventSettings ServerMessagesSettings = new EventSettings();
+
             [JsonProperty(PropertyName = "Server state settings")]
             public EventSettings ServerStateSettings = new EventSettings();
 
@@ -189,15 +206,21 @@ namespace Oxide.Plugins
 
             [JsonProperty(PropertyName = "User Name Updated settings")]
             public EventSettings UserNameUpdateSettings = new EventSettings();
-
-            [JsonProperty(PropertyName = "Use AntiSpamNames On Chat Messages")]
-            public bool UseAntiSpamNames = false;
         }
 
         private class GlobalSettings
         {
             [JsonProperty(PropertyName = "Log to console?")]
             public bool LoggingEnabled = false;
+
+            [JsonProperty(PropertyName = "Use AntiSpamNames plugin on chat messages")]
+            public bool UseAntiSpamNames = false;
+
+            [JsonProperty(PropertyName = "Use UFilter plugin on chat messages")]
+            public bool UseUFilter = false;
+
+            [JsonProperty(PropertyName = "Hide admin connect/disconnect messages")]
+            public bool HideAdmin = false;
         }
 
         private class EventSettings
@@ -241,47 +264,59 @@ namespace Oxide.Plugins
 
         #region Localization
 
-        private string Lang(string key, string id = null, params object[] args) => string.Format(lang.GetMessage(key, this, id), args);
+        private string Lang(string key, string userIDString = null, params object[] args)
+        {
+            try
+            {
+                return string.Format(lang.GetMessage(key, this, userIDString).Replace("{time}", DateTime.Now.ToShortTimeString()), args);
+            }
+            catch (Exception ex)
+            {
+                PrintError($"Lang Key '{key}' threw exception:\n{ex}");
+                throw;
+            }
+        }
 
         protected override void LoadDefaultMessages()
         {
             lang.RegisterMessages(new Dictionary<string, string>
             {
-                ["Bradley"] = ":dagger: Bradley spawned `{0}`",
-                ["CargoPlane"] = ":airplane: Cargo Plane incoming `{0}`",
-                ["CargoShip"] = ":ship: Cargo Ship incoming `{0}`",
-                ["Chat"] = ":speech_left: **{0}**: {1}",
-                ["ChatTeam"] = ":busts_in_silhouette: **{0}**: {1}",
-                ["Chinook"] = ":helicopter: Chinook 47 incoming `{0}`",
-                ["Christmas"] = ":christmas_tree: Christmas event started",
-                ["DangerousTreasuresEnded"] = ":pirate_flag: Dangerous Treasures event at `{0}` is ended",
-                ["DangerousTreasuresStarted"] = ":pirate_flag: Dangerous Treasures started at `{0}`",
-                ["Death"] = ":skull: `{0}` died",
-                ["DeathNotes"] = ":skull_crossbones: {0}",
-                ["Duel"] = ":crossed_swords: `{0}` has defeated `{1}` in a duel",
-                ["Easter"] = ":egg: Easter event started",
-                ["EasterWinner"] = ":egg: Easter event ended. The winner is `{0}`",
-                ["Halloween"] = ":jack_o_lantern: Halloween event started",
-                ["HalloweenWinner"] = ":jack_o_lantern: Halloween event ended. The winner is `{0}`",
-                ["Helicopter"] = ":dagger: Helicopter incoming `{0}`",
-                ["Initialized"] = ":ballot_box_with_check: Server is online again!",
-                ["LockedCrate"] = ":package: Codelocked crate is here `{0}`",
-                ["PersonalHelicopter"] = ":dagger: Personal Helicopter incoming `{0}`",
-                ["PlayerConnected"] = ":white_check_mark: {0} connected",
-                ["PlayerConnectedInfo"] = ":detective: {0} connected. SteamID: `{1}` IP: `{2}`",
-                ["PlayerDisconnected"] = ":x: {0} disconnected ({1})",
-                ["PlayerRespawned"] = ":baby_symbol: `{0}` has been spawned at `{1}`",
-                ["RaidableBaseEnded"] = ":homes: {1} Raidable Base at `{0}` is ended",
-                ["RaidableBaseStarted"] = ":homes: {1} Raidable Base spawned at `{0}`",
-                ["SantaSleigh"] = ":santa: SantaSleigh Event started",
-                ["Shutdown"] = ":stop_sign: Server is shutting down!",
-                ["SupplyDrop"] = ":parachute: SupplyDrop incoming at `{0}`",
-                ["SupplyDropLanded"] = ":gift: SupplyDrop landed at `{0}`",
-                ["SupplySignal"] = ":firecracker: SupplySignal was thrown by `{0}` at `{1}`",
-                ["UserBanned"] = ":no_entry: Player `{0}` SteamID: `{1}` IP: `{2}` was banned: `{3}`",
-                ["UserKicked"] = ":hiking_boot: Player `{0}` SteamID: `{1}` was kicked: `{2}`",
-                ["UserNameUpdated"] = ":label: `{0}` changed name to `{1}` SteamID: `{2}`",
-                ["UserUnbanned"] = ":ok: Player `{0}` SteamID: `{1}` IP: `{2}` was unbanned",
+                ["Bradley"] = ":dagger: {time} Bradley spawned `{0}`",
+                ["CargoPlane"] = ":airplane: {time} Cargo Plane incoming `{0}`",
+                ["CargoShip"] = ":ship: {time} Cargo Ship incoming `{0}`",
+                ["Chat"] = ":speech_left: {time} **{0}**: {1}",
+                ["ChatTeam"] = ":busts_in_silhouette: {time} **{0}**: {1}",
+                ["Chinook"] = ":helicopter: {time} Chinook 47 incoming `{0}`",
+                ["Christmas"] = ":christmas_tree: {time} Christmas event started",
+                ["DangerousTreasuresEnded"] = ":pirate_flag: {time} Dangerous Treasures event at `{0}` is ended",
+                ["DangerousTreasuresStarted"] = ":pirate_flag: {time} Dangerous Treasures started at `{0}`",
+                ["Death"] = ":skull: {time} `{0}` died",
+                ["DeathNotes"] = ":skull_crossbones: {time} {0}",
+                ["Duel"] = ":crossed_swords: {time} `{0}` has defeated `{1}` in a duel",
+                ["Easter"] = ":egg: {time} Easter event started",
+                ["EasterWinner"] = ":egg: {time} Easter event ended. The winner is `{0}`",
+                ["Halloween"] = ":jack_o_lantern: {time} Halloween event started",
+                ["HalloweenWinner"] = ":jack_o_lantern: {time} Halloween event ended. The winner is `{0}`",
+                ["Helicopter"] = ":dagger: {time} Helicopter incoming `{0}`",
+                ["Initialized"] = ":ballot_box_with_check: {time} Server is online again!",
+                ["LockedCrate"] = ":package: {time} Codelocked crate is here `{0}`",
+                ["PersonalHelicopter"] = ":dagger: {time} Personal Helicopter incoming `{0}`",
+                ["PlayerConnected"] = ":white_check_mark: {time} {0} connected",
+                ["PlayerConnectedInfo"] = ":detective: {time} {0} connected. SteamID: `{1}` IP: `{2}`",
+                ["PlayerDisconnected"] = ":x: {time} {0} disconnected ({1})",
+                ["PlayerRespawned"] = ":baby_symbol: {time} `{0}` has been spawned at `{1}`",
+                ["RaidableBaseEnded"] = ":homes: {time} {1} Raidable Base at `{0}` is ended",
+                ["RaidableBaseStarted"] = ":homes: {time} {1} Raidable Base spawned at `{0}`",
+                ["SantaSleigh"] = ":santa: {time} SantaSleigh Event started",
+                ["ServerMessage"] = ":desktop: {time} `{0}`",
+                ["Shutdown"] = ":stop_sign: {time} Server is shutting down!",
+                ["SupplyDrop"] = ":parachute: {time} SupplyDrop incoming at `{0}`",
+                ["SupplyDropLanded"] = ":gift: {time} SupplyDrop landed at `{0}`",
+                ["SupplySignal"] = ":firecracker: {time} SupplySignal was thrown by `{0}` at `{1}`",
+                ["UserBanned"] = ":no_entry: {time} Player `{0}` SteamID: `{1}` IP: `{2}` was banned: `{3}`",
+                ["UserKicked"] = ":hiking_boot: {time} Player `{0}` SteamID: `{1}` was kicked: `{2}`",
+                ["UserNameUpdated"] = ":label: {time} `{0}` changed name to `{1}` SteamID: `{2}`",
+                ["UserUnbanned"] = ":ok: {time} Player `{0}` SteamID: `{1}` IP: `{2}` was unbanned",
 
                 ["Easy"] = "Easy",
                 ["Medium"] = "Medium",
@@ -450,6 +485,11 @@ namespace Oxide.Plugins
                     Puts($"Player {player.displayName} connected.");
                 }
 
+                if (_configData.GlobalSettings.HideAdmin)
+                {
+                    return;
+                }
+
                 SendMessage(Lang("PlayerConnected", null, ReplaceChars(player.displayName)), _configData.PlayerConnectedSettings.WebhookURL);
             }
 
@@ -492,13 +532,24 @@ namespace Oxide.Plugins
                 }
             }
 
-            if (_configData.UseAntiSpamNames && AntiSpamNames != null && AntiSpamNames.IsLoaded)
+            if (_configData.GlobalSettings.UseAntiSpamNames && AntiSpamNames != null && AntiSpamNames.IsLoaded)
             {
                 message = AntiSpamNames.Call<string>("GetClearText", message);
                 if (string.IsNullOrWhiteSpace(message))
                 {
                     return;
                 }
+            }
+
+            if (_configData.GlobalSettings.UseUFilter && _uFilterStoredData.Profanities.Count > 0)
+            {
+                StringBuilder sb = new StringBuilder(message);
+                foreach (string profanity in _uFilterStoredData.Profanities)
+                {
+                    sb.Replace(profanity, new string('＊', profanity.Length));
+                }
+
+                message = sb.ToString();
             }
 
             message = ReplaceChars(message);
@@ -537,7 +588,7 @@ namespace Oxide.Plugins
         }
 
         private void OnUserKicked(IPlayer player, string reason)
-        {            
+        {
             if (_configData.UserKickedSettings.Enabled)
             {
                 if (_configData.GlobalSettings.LoggingEnabled)
@@ -550,7 +601,7 @@ namespace Oxide.Plugins
         }
 
         private void OnUserBanned(string name, string id, string ipAddress, string reason)
-        {            
+        {
             if (_configData.UserBannedSettings.Enabled)
             {
                 if (_configData.GlobalSettings.LoggingEnabled)
@@ -563,7 +614,7 @@ namespace Oxide.Plugins
         }
 
         private void OnUserUnbanned(string name, string id, string ipAddress)
-        {            
+        {
             if (_configData.UserBannedSettings.Enabled)
             {
                 if (_configData.GlobalSettings.LoggingEnabled)
@@ -585,6 +636,19 @@ namespace Oxide.Plugins
                 }
 
                 SendMessage(Lang("UserNameUpdated", null, ReplaceChars(oldName), ReplaceChars(newName), id), _configData.UserNameUpdateSettings.WebhookURL);
+            }
+        }
+
+        private void OnServerMessage(string message, string name, string color, ulong id)
+        {
+            if (_configData.ServerMessagesSettings.Enabled)
+            {
+                if (_configData.GlobalSettings.LoggingEnabled)
+                {
+                    Puts($"ServerMessage: {message}");
+                }
+
+                SendMessage(Lang("ServerMessage", null, message), _configData.ServerMessagesSettings.WebhookURL);
             }
         }
 
@@ -644,7 +708,7 @@ namespace Oxide.Plugins
             _queueProcessed = _queueMessages;
             _queueMessages = new Hash<DiscordMessage, string> ();
 
-            timer.Repeat(1f, _queueProcessed.Count, () =>
+            timer.Repeat(1.10f, _queueProcessed.Count, () =>
             {
 
                 foreach(KeyValuePair<DiscordMessage, string> message in _queueProcessed)
@@ -854,6 +918,11 @@ namespace Oxide.Plugins
                 Unsubscribe(nameof(OnSupplyDropLanded));
             }
 
+            if (!_configData.ServerMessagesSettings.Enabled)
+            {
+                Unsubscribe(nameof(OnServerMessage));
+            }
+
             if (!_configData.PlayerConnectedSettings.Enabled &&
                 !_configData.PlayerConnectedInfoSettings.Enabled)
             {
@@ -990,10 +1059,7 @@ namespace Oxide.Plugins
             return original;
         }
 
-        private string GetGridPosition(Vector3 pos)
-        {
-            return PhoneController.PositionToGridCoord(pos);
-        }
+        private string GetGridPosition(Vector3 pos) => PhoneController.PositionToGridCoord(pos);
 
         #endregion Helpers
 
