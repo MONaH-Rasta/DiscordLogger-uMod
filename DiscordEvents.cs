@@ -4,22 +4,23 @@ using Oxide.Core.Libraries;
 using Oxide.Core.Plugins;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
+using System.Text;
 using Time = UnityEngine.Time;
 using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Discord Events", "MON@H", "1.2.3")]
+    [Info("Discord Events", "MON@H", "1.2.4")]
     [Description("Displays events to a discord channel")]
     class DiscordEvents : CovalencePlugin
     {
         #region Class Fields
 
-        [PluginReference] private Plugin BetterChatMute, PersonalHeli;
+        [PluginReference] private Plugin AntiSpamNames, BetterChatMute, PersonalHeli, PersonalHeliExtended;
 
-        private Dictionary<DiscordMessage, string> _queueMessages = new Dictionary<DiscordMessage, string>();
-        private Dictionary<DiscordMessage, string> _queueProcessed = new Dictionary<DiscordMessage, string>();
-        private Dictionary<uint, float> _lastEntities = new Dictionary<uint, float>();
+        private Hash<DiscordMessage, string> _queueMessages = new Hash<DiscordMessage, string>();
+        private Hash<DiscordMessage, string> _queueProcessed = new Hash<DiscordMessage, string>();
+        private Hash<uint, float> _lastEntities = new Hash<uint, float>();
 
         private readonly List<Regex> _regexTags = new List<Regex>
         {
@@ -188,6 +189,9 @@ namespace Oxide.Plugins
 
             [JsonProperty(PropertyName = "User Name Updated settings")]
             public EventSettings UserNameUpdateSettings = new EventSettings();
+
+            [JsonProperty(PropertyName = "Use AntiSpamNames On Chat Messages")]
+            public bool UseAntiSpamNames = false;
         }
 
         private class GlobalSettings
@@ -298,49 +302,23 @@ namespace Oxide.Plugins
             });
         }
 
-        private void OnEntitySpawned(BradleyAPC entity)
-        {
-            HandleEntity(entity);
-        }
+        private void OnEntitySpawned(BradleyAPC entity) => HandleEntity(entity);
 
-        private void OnEntitySpawned(CargoPlane entity)
-        {
-            HandleEntity(entity);
-        }
+        private void OnEntitySpawned(CargoPlane entity) => HandleEntity(entity);
 
-        private void OnEntitySpawned(CargoShip entity)
-        {
-            HandleEntity(entity);
-        }
+        private void OnEntitySpawned(CargoShip entity) => HandleEntity(entity);
 
-        private void OnEntitySpawned(CH47HelicopterAIController entity)
-        {
-            HandleEntity(entity);
-        }
+        private void OnEntitySpawned(CH47HelicopterAIController entity) => HandleEntity(entity);
 
-        private void OnEntitySpawned(EggHuntEvent entity)
-        {
-            HandleEntity(entity);
-        }
+        private void OnEntitySpawned(EggHuntEvent entity) => HandleEntity(entity);
 
-        private void OnEntitySpawned(HackableLockedCrate entity)
-        {
-            HandleEntity(entity);
-        }
+        private void OnEntitySpawned(HackableLockedCrate entity) => HandleEntity(entity);
 
-        private void OnEntitySpawned(SantaSleigh entity)
-        {
-            HandleEntity(entity);
-        }
-        private void OnEntitySpawned(SupplyDrop entity)
-        {
-            HandleEntity(entity);
-        }
+        private void OnEntitySpawned(SantaSleigh entity) => HandleEntity(entity);
 
-        private void OnEntitySpawned(XMasRefill entity)
-        {
-            HandleEntity(entity);
-        }
+        private void OnEntitySpawned(SupplyDrop entity) => HandleEntity(entity);
+
+        private void OnEntitySpawned(XMasRefill entity) => HandleEntity(entity);
 
         private void OnEntityDeath(BasePlayer player, HitInfo info)
         {
@@ -413,15 +391,9 @@ namespace Oxide.Plugins
             }
         }
 
-        private void OnExplosiveThrown(BasePlayer player, SupplySignal entity)
-        {
-            HandleSupplySignal(player, entity);
-        }
+        private void OnExplosiveThrown(BasePlayer player, SupplySignal entity) => HandleSupplySignal(player, entity);
 
-        private void OnExplosiveDropped(BasePlayer player, SupplySignal entity)
-        {
-            HandleSupplySignal(player, entity);
-        }
+        private void OnExplosiveDropped(BasePlayer player, SupplySignal entity) => HandleSupplySignal(player, entity);
 
         private void OnSupplyDropLanded(SupplyDrop entity)
         {
@@ -520,6 +492,15 @@ namespace Oxide.Plugins
                 }
             }
 
+            if (_configData.UseAntiSpamNames && AntiSpamNames != null && AntiSpamNames.IsLoaded)
+            {
+                message = AntiSpamNames.Call<string>("GetClearText", message);
+                if (string.IsNullOrWhiteSpace(message))
+                {
+                    return;
+                }
+            }
+
             message = ReplaceChars(message);
 
             if (channel == ConVar.Chat.ChatChannel.Global && _configData.ChatSettings.Enabled)
@@ -535,7 +516,7 @@ namespace Oxide.Plugins
 
         void OnPlayerRespawned(BasePlayer player)
         {
-            if (_configData.PlayerRespawnedSettings.Enabled && player != null)
+            if (_configData.PlayerRespawnedSettings.Enabled && !string.IsNullOrWhiteSpace(player?.displayName))
             {
                 if (_configData.GlobalSettings.LoggingEnabled)
                 {
@@ -613,11 +594,20 @@ namespace Oxide.Plugins
 
         private string ReplaceChars(string text)
         {
+            StringBuilder sb = new StringBuilder(text);
             if (string.IsNullOrWhiteSpace(text))
             {
                 return string.Empty;
-            } else {
-                return text.Replace("*", "＊").Replace("`", "'").Replace("_", "＿").Replace("~", "～").Replace("@here", "here").Replace("@everyone", "everyone");
+            }
+            else
+            {
+                sb.Replace("*", "＊");
+                sb.Replace("`", "'");
+                sb.Replace("_", "＿");
+                sb.Replace("~", "～");
+                sb.Replace("@here", "here");
+                sb.Replace("@everyone", "everyone");
+                return sb.ToString();
             }
         }
 
@@ -652,7 +642,7 @@ namespace Oxide.Plugins
             }
 
             _queueProcessed = _queueMessages;
-            _queueMessages = new Dictionary<DiscordMessage, string> ();
+            _queueMessages = new Hash<DiscordMessage, string> ();
 
             timer.Repeat(1f, _queueProcessed.Count, () =>
             {
@@ -704,6 +694,20 @@ namespace Oxide.Plugins
                     if (PersonalHeli != null && PersonalHeli.IsLoaded)
                     {
                         if (PersonalHeli.Call<bool>("IsPersonal", baseEntity))
+                        {
+                            if (_configData.GlobalSettings.LoggingEnabled)
+                            {
+                                Puts("Personal Helicopter spawned at " + GetGridPosition(baseEntity.transform.position));
+                            }
+
+                            SendMessage(Lang("PersonalHelicopter", null, GetGridPosition(baseEntity.transform.position)), eventSettengs.WebhookURL);
+                            return;
+                        }
+                    }
+
+                    if (PersonalHeliExtended != null && PersonalHeliExtended.IsLoaded)
+                    {
+                        if (PersonalHeliExtended.Call<bool>("IsPersonal", baseEntity))
                         {
                             if (_configData.GlobalSettings.LoggingEnabled)
                             {
@@ -945,7 +949,7 @@ namespace Oxide.Plugins
         {
             if (_lastEntities != null)
             {
-                Dictionary<uint, float> actualized = new Dictionary<uint, float> ();
+                Hash<uint, float> actualized = new Hash<uint, float> ();
 
                 foreach (var entity in _lastEntities)
                 {
