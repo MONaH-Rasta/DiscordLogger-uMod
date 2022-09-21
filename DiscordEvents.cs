@@ -9,7 +9,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Discord Events", "MON@H", "1.2.0")]
+    [Info("Discord Events", "MON@H", "1.2.1")]
     [Description("Displays events to a discord channel")]
     class DiscordEvents : CovalencePlugin
     {
@@ -176,6 +176,15 @@ namespace Oxide.Plugins
 
             [JsonProperty(PropertyName = "Supply Drop settings")]
             public EventSettings SupplyDropSettings = new EventSettings();
+
+            [JsonProperty(PropertyName = "User Banned settings")]
+            public EventSettings UserBannedSettings = new EventSettings();
+
+            [JsonProperty(PropertyName = "User Kicked settings")]
+            public EventSettings UserKickedSettings = new EventSettings();
+
+            [JsonProperty(PropertyName = "User Name Updated settings")]
+            public EventSettings UserNameUpdateSettings = new EventSettings();
         }
 
         private class GlobalSettings
@@ -261,6 +270,10 @@ namespace Oxide.Plugins
                 ["SupplyDrop"] = ":parachute: SupplyDrop incoming at `{0}`",
                 ["SupplyDropLanded"] = ":gift: SupplyDrop landed at `{0}`",
                 ["SupplySignal"] = ":firecracker: SupplySignal was thrown by `{0}` at `{1}`",
+                ["UserBanned"] = ":no_entry: Player `{0}` SteamID: `{1}` IP: `{2}` was banned: `{3}`",
+                ["UserKicked"] = ":hiking_boot: Player `{0}` SteamID: `{1}` was kicked: `{2}`",
+                ["UserNameUpdated"] = ":label: `{0}` changed name to `{1}` SteamID: `{2}`",
+                ["UserUnbanned"] = ":ok: Player `{0}` SteamID: `{1}` IP: `{2}` was unbanned",
 
                 ["Easy"] = "Easy",
                 ["Medium"] = "Medium",
@@ -336,10 +349,10 @@ namespace Oxide.Plugins
             {
                 if (_configData.GlobalSettings.LoggingEnabled)
                 {
-                    Puts($"{player.displayName.Replace("*", "＊")} died.");
+                    Puts($"{player.displayName} died.");
                 }
 
-                SendMessage(Lang("Death", null, player.displayName.Replace("*", "＊")), _configData.PlayerDeathSettings.WebhookURL);
+                SendMessage(Lang("Death", null, ReplaceChars(player.displayName)), _configData.PlayerDeathSettings.WebhookURL);
             }
         }
 
@@ -362,7 +375,7 @@ namespace Oxide.Plugins
             string winner;
             if (winners.Count > 0)
             {
-                winner = winners[0].displayName.Replace("*", "＊");
+                winner = ReplaceChars(winners[0].displayName);
             }
             else
             {
@@ -436,10 +449,10 @@ namespace Oxide.Plugins
             {
                 if (_configData.GlobalSettings.LoggingEnabled)
                 {
-                    Puts($"{attacker.displayName.Replace("*", "＊")} has defeated {victim.displayName.Replace("*", "＊")} in a duel");
+                    Puts($"{attacker.displayName} has defeated {victim.displayName} in a duel");
                 }
 
-                SendMessage(Lang("Duel", null, attacker.displayName.Replace("*", "＊"), victim.displayName.Replace("*", "＊")), _configData.DuelSettings.WebhookURL);
+                SendMessage(Lang("Duel", null, ReplaceChars(attacker.displayName), ReplaceChars(victim.displayName)), _configData.DuelSettings.WebhookURL);
             }
         }
 
@@ -458,15 +471,15 @@ namespace Oxide.Plugins
             {
                 if (_configData.GlobalSettings.LoggingEnabled)
                 {
-                    Puts($"Player {player.displayName.Replace("*", "＊")} connected.");
+                    Puts($"Player {player.displayName} connected.");
                 }
 
-                SendMessage(Lang("PlayerConnected", null, player.displayName.Replace("*", "＊")), _configData.PlayerConnectedSettings.WebhookURL);
+                SendMessage(Lang("PlayerConnected", null, ReplaceChars(player.displayName)), _configData.PlayerConnectedSettings.WebhookURL);
             }
 
             if (_configData.PlayerConnectedInfoSettings.Enabled)
             {
-                SendMessage(Lang("PlayerConnectedInfo", null, player.displayName.Replace("*", "＊"), player.UserIDString, player.net.connection.ipaddress.Split(':')[0]), _configData.PlayerConnectedInfoSettings.WebhookURL);
+                SendMessage(Lang("PlayerConnectedInfo", null, ReplaceChars(player.displayName), player.UserIDString, player.net.connection.ipaddress.Split(':')[0]), _configData.PlayerConnectedInfoSettings.WebhookURL);
             }
         }
 
@@ -481,10 +494,10 @@ namespace Oxide.Plugins
             {
                 if (_configData.GlobalSettings.LoggingEnabled)
                 {
-                    Puts($"Player {player.displayName.Replace("*", "＊")} disconnected ({reason}).");
+                    Puts($"Player {player.displayName} disconnected ({reason}).");
                 }
 
-                SendMessage(Lang("PlayerDisconnected", null, player.displayName.Replace("*", "＊"), reason), _configData.PlayerConnectedSettings.WebhookURL);
+                SendMessage(Lang("PlayerDisconnected", null, ReplaceChars(player.displayName), reason), _configData.PlayerDisconnectedSettings.WebhookURL);
             }
         }
 
@@ -503,16 +516,16 @@ namespace Oxide.Plugins
                 }
             }
 
-            message = message.Replace("@here", "here").Replace("@everyone", "everyone").Replace("*", "＊");
+            message = ReplaceChars(message);
 
             if (channel == ConVar.Chat.ChatChannel.Global && _configData.ChatSettings.Enabled)
             {
-                SendMessage(Lang("Chat", null, player.displayName.Replace("*", "＊"), message), _configData.ChatSettings.WebhookURL);
+                SendMessage(Lang("Chat", null, ReplaceChars(player.displayName), message), _configData.ChatSettings.WebhookURL);
             }
 
             if (channel == ConVar.Chat.ChatChannel.Team && _configData.ChatTeamSettings.Enabled)
             {
-                SendMessage(Lang("ChatTeam", null, player.displayName.Replace("*", "＊"), message), _configData.ChatTeamSettings.WebhookURL);
+                SendMessage(Lang("ChatTeam", null, ReplaceChars(player.displayName), message), _configData.ChatTeamSettings.WebhookURL);
             }
         }
 
@@ -525,9 +538,71 @@ namespace Oxide.Plugins
             HandleDangerousTreasures(containerPos, "DangerousTreasuresEnded");
         }
 
+        void OnUserKicked(IPlayer player, string reason)
+        {            
+            if (_configData.UserKickedSettings.Enabled)
+            {
+                if (_configData.GlobalSettings.LoggingEnabled)
+                {
+                    Puts($"Player {player.Name} ({player.Id}) was kicked ({reason})");
+                }
+
+                SendMessage(Lang("UserKicked", null, ReplaceChars(player.Name), player.Id, ReplaceChars(reason)), _configData.UserKickedSettings.WebhookURL);
+            }
+        }
+
+        void OnUserBanned(string name, string id, string ipAddress, string reason)
+        {            
+            if (_configData.UserBannedSettings.Enabled)
+            {
+                if (_configData.GlobalSettings.LoggingEnabled)
+                {
+                    Puts($"Player {name} ({id}) at {ipAddress} was banned: {reason}");
+                }
+
+                SendMessage(Lang("UserBanned", null, ReplaceChars(name), id, ipAddress, ReplaceChars(reason)), _configData.UserBannedSettings.WebhookURL);
+            }
+        }
+
+        void OnUserUnbanned(string name, string id, string ipAddress)
+        {            
+            if (_configData.UserBannedSettings.Enabled)
+            {
+                if (_configData.GlobalSettings.LoggingEnabled)
+                {
+                    Puts($"Player {name} ({id}) at {ipAddress} was unbanned");
+                }
+
+                SendMessage(Lang("UserUnbanned", null, ReplaceChars(name), id, ipAddress), _configData.UserBannedSettings.WebhookURL);
+            }
+        }
+
+        void OnUserNameUpdated(string id, string oldName, string newName)
+        {
+            if (!oldName.Equals(newName) && _configData.UserNameUpdateSettings.Enabled)
+            {
+                if (_configData.GlobalSettings.LoggingEnabled)
+                {
+                    Puts($"Player name changed from {oldName} to {newName} for ID {id}");
+                }
+
+                SendMessage(Lang("UserNameUpdated", null, ReplaceChars(oldName), ReplaceChars(newName), id), _configData.UserNameUpdateSettings.WebhookURL);
+            }
+        }
+
         #endregion Events Hooks
 
         #region Methods
+
+        private string ReplaceChars(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return string.Empty;
+            } else {
+                return text.Replace("*", "＊").Replace("`", "'").Replace("_", "＿").Replace("~", "～").Replace("@here", "here").Replace("@everyone", "everyone");
+            }
+        }
 
         private void SendMessage(string message, string webhookUrl)
         {
@@ -638,10 +713,10 @@ namespace Oxide.Plugins
                     {
                         if (_configData.GlobalSettings.LoggingEnabled)
                         {
-                            Puts($"SupplySignal was thrown by {player.displayName.Replace("*", "＊")} at {GetGridPosition(entity.transform.position)}");
+                            Puts($"SupplySignal was thrown by {player.displayName} at {GetGridPosition(entity.transform.position)}");
                         }
 
-                        SendMessage(Lang("SupplySignal", null, player.displayName.Replace("*", "＊"), GetGridPosition(entity.transform.position)), _configData.SupplyDropSettings.WebhookURL);
+                        SendMessage(Lang("SupplySignal", null, ReplaceChars(player.displayName), GetGridPosition(entity.transform.position)), _configData.SupplyDropSettings.WebhookURL);
                     }
                 });
             }
@@ -779,6 +854,22 @@ namespace Oxide.Plugins
             {
                 Unsubscribe(nameof(OnRaidableBaseEnded));
                 Unsubscribe(nameof(OnRaidableBaseStarted));
+            }
+
+            if (!_configData.UserBannedSettings.Enabled)
+            {
+                Unsubscribe(nameof(OnUserBanned));
+                Unsubscribe(nameof(OnUserUnbanned));
+            }
+
+            if (!_configData.UserKickedSettings.Enabled)
+            {
+                Unsubscribe(nameof(OnUserKicked));
+            }
+
+            if (!_configData.UserNameUpdateSettings.Enabled)
+            {
+                Unsubscribe(nameof(OnUserNameUpdated));
             }
         }
 
