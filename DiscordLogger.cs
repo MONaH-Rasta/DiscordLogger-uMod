@@ -1514,7 +1514,7 @@ namespace Oxide.Plugins
             {
                 case LangKeys.Plugin.RaidableBaseCompleted:
                     _sb.Clear();
-                    for (int i = 0; i < raiders.Count; i++)
+                    for (int i = 0; i < raiders?.Count; i++)
                     {
                         if (i > 0)
                         {
@@ -1522,8 +1522,8 @@ namespace Oxide.Plugins
                         }
                         _sb.Append(raiders[i].displayName);
                     }
-                    LogToConsole($"{difficultyString} Raidable Base owned by {owner.displayName} at {GetGridPosition(raidPos)} has been raided by {_sb.ToString()}");
-                    DiscordSendMessage(Lang(langKey, null, GetGridPosition(raidPos), Lang(difficultyString), owner.displayName, _sb.ToString()), _configData.RaidableBasesSettings.WebhookURL);
+                    LogToConsole($"{difficultyString} Raidable Base owned by {owner?.displayName} at {GetGridPosition(raidPos)} has been raided by {_sb.ToString()}");
+                    DiscordSendMessage(Lang(langKey, null, GetGridPosition(raidPos), Lang(difficultyString), owner?.displayName, _sb.ToString()), _configData.RaidableBasesSettings.WebhookURL);
                     break;
                 case LangKeys.Plugin.RaidableBaseEnded:
                 case LangKeys.Plugin.RaidableBaseStarted:
