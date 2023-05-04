@@ -1,17 +1,18 @@
-﻿using Newtonsoft.Json;
-using Oxide.Core.Libraries.Covalence;
-using Oxide.Core.Libraries;
-using Oxide.Core.Plugins;
+﻿using System;
 using System.Collections.Generic;
 using System.Net;
 using System.Text.RegularExpressions;
 using System.Text;
-using System;
+
+using Newtonsoft.Json;
+using Oxide.Core.Libraries.Covalence;
+using Oxide.Core.Libraries;
+using Oxide.Core.Plugins;
 using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Discord Logger", "MON@H", "2.0.11")]
+    [Info("Discord Logger", "MON@H", "2.0.13")]
     [Description("Logs events to Discord channels using webhooks")]
     class DiscordLogger : RustPlugin
     {
@@ -19,9 +20,9 @@ namespace Oxide.Plugins
 
         [PluginReference] private Plugin AntiSpam, BetterChatMute, CallHeli, PersonalHeli, UFilter;
 
-        private readonly Hash<uint, CargoShip> _cargoShips = new Hash<uint, CargoShip>();
-        private readonly List<uint> _listBadCargoShips = new List<uint>();
-        private readonly List<uint> _listSupplyDrops = new List<uint>();
+        private readonly Hash<ulong, CargoShip> _cargoShips = new Hash<ulong, CargoShip>();
+        private readonly List<ulong> _listBadCargoShips = new List<ulong>();
+        private readonly List<ulong> _listSupplyDrops = new List<ulong>();
         private readonly Queue<QueuedMessage> _queue = new Queue<QueuedMessage>();
         private readonly StringBuilder _sb = new StringBuilder();
 
@@ -34,7 +35,7 @@ namespace Oxide.Plugins
         private string[] _profanities;
         private Timer _timerQueue;
         private Timer _timerQueueCooldown;
-        private uint _entityID;
+        private ulong _entityID;
         private Vector3 _locationLargeOilRig;
         private Vector3 _locationOilRig;
 
@@ -713,7 +714,7 @@ namespace Oxide.Plugins
         {
             if (cargoShip.IsValid())
             {
-                _cargoShips.Remove(cargoShip.net.ID);
+                _cargoShips.Remove(cargoShip.net.ID.Value);
             }
         }
 
@@ -959,7 +960,7 @@ namespace Oxide.Plugins
 
         private void OnSupplyDropLanded(SupplyDrop entity)
         {
-            if (!entity.IsValid() || _listSupplyDrops.Contains(entity.net.ID))
+            if (!entity.IsValid() || _listSupplyDrops.Contains(entity.net.ID.Value))
             {
                 return;
             }
@@ -968,7 +969,7 @@ namespace Oxide.Plugins
 
             DiscordSendMessage(Lang(LangKeys.Event.SupplyDropLanded, null, GetGridPosition(entity.transform.position)), _configData.SupplyDropSettings.WebhookURL);
 
-            _entityID = entity.net.ID;
+            _entityID = entity.net.ID.Value;
 
             _listSupplyDrops.Add(_entityID);
 
@@ -1363,9 +1364,9 @@ namespace Oxide.Plugins
                 LogToConsole($"CargoShip spawned at {GetGridPosition(position)}");
 
                 NextTick( () => {
-                    if (baseEntity.IsValid() && !_cargoShips.ContainsKey(baseEntity.net.ID))
+                    if (baseEntity.IsValid() && !_cargoShips.ContainsKey(baseEntity.net.ID.Value))
                     {
-                        _cargoShips[baseEntity.net.ID] = (CargoShip)baseEntity;
+                        _cargoShips[baseEntity.net.ID.Value] = (CargoShip)baseEntity;
                     }
                 });
             }
@@ -1667,7 +1668,7 @@ namespace Oxide.Plugins
 
             try
             {
-                foreach (KeyValuePair<uint, CargoShip> cargoShip in _cargoShips)
+                foreach (KeyValuePair<ulong, CargoShip> cargoShip in _cargoShips)
                 {
                     if (!cargoShip.Value.IsValid() || cargoShip.Value.IsDestroyed)
                     {
