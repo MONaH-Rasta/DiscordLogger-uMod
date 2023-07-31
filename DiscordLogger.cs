@@ -12,7 +12,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Discord Logger", "MON@H", "2.0.13")]
+    [Info("Discord Logger", "MON@H", "2.0.15")]
     [Description("Logs events to Discord channels using webhooks")]
     class DiscordLogger : RustPlugin
     {
@@ -20,6 +20,7 @@ namespace Oxide.Plugins
 
         [PluginReference] private Plugin AntiSpam, BetterChatMute, CallHeli, PersonalHeli, UFilter;
 
+        private readonly Hash<string, string> _countryCodes = new Hash<string, string>();
         private readonly Hash<ulong, CargoShip> _cargoShips = new Hash<ulong, CargoShip>();
         private readonly List<ulong> _listBadCargoShips = new List<ulong>();
         private readonly List<ulong> _listSupplyDrops = new List<ulong>();
@@ -61,7 +62,7 @@ namespace Oxide.Plugins
             public string Message {set; get;}
         }
 
-        private enum TeamEventType
+        public enum TeamEventType
         {
             Created,
             Disbanded,
@@ -331,11 +332,11 @@ namespace Oxide.Plugins
 
         #region Localization
 
-        private string Lang(string key, string userIDString = null, params object[] args)
+        public string Lang(string key, string userIDString = null, params object[] args)
         {
             try
             {
-                return string.Format(lang.GetMessage(key, this, userIDString).Replace("{time}", DateTime.Now.ToShortTimeString()), args);
+                return string.Format(lang.GetMessage(key, this, userIDString).Replace("{time}", $"<t:{DateTimeOffset.Now.ToUnixTimeSeconds()}:t>"), args);
             }
             catch (Exception ex)
             {
@@ -767,11 +768,18 @@ namespace Oxide.Plugins
                     }
                     else
                     {
-                        webrequest.Enqueue($"http://ip-api.com/json/{player.net.connection.ipaddress.Split(':')[0]}", null, (code, response) => {
+                        string ip = player.net.connection.ipaddress.Split(':')[0];
+                        webrequest.Enqueue($"http://ip-api.com/json/{ip}", null, (code, response) => {
                             if (code == 200 && response != null)
                             {
                                 sb.Append(" :flag_");
-                                sb.Append(JsonConvert.DeserializeObject<Response>(response).CountryCode.ToLower());
+                                string countryCode = _countryCodes[ip];
+                                if (string.IsNullOrEmpty(countryCode))
+                                {
+                                    countryCode = JsonConvert.DeserializeObject<Response>(response).CountryCode.ToLower();
+                                    _countryCodes[ip] = countryCode;
+                                }
+                                sb.Append(countryCode);
                                 sb.Append(":");
                             }
 
@@ -1214,7 +1222,7 @@ namespace Oxide.Plugins
 
         #region Core Methods
 
-        private string ReplaceChars(string text)
+        public string ReplaceChars(string text)
         {
             if (string.IsNullOrWhiteSpace(text))
             {
@@ -1234,36 +1242,7 @@ namespace Oxide.Plugins
             return _sb.ToString();
         }
 
-        private void DiscordSendMessage(string message, string webhookUrl, bool stripTags = false)
-        {
-            webhookUrl = GetWebhookURL(webhookUrl);
-
-            if (string.IsNullOrWhiteSpace(webhookUrl))
-            {
-                PrintError("DiscordSendMessage: webhookUrl is null or empty!");
-                return;
-            }
-
-            if (stripTags)
-            {
-                message = StripRustTags(message);
-            }
-
-            if (string.IsNullOrWhiteSpace(message))
-            {
-                PrintError("DiscordSendMessage: message is null or empty!");
-                return;
-            }
-
-            _queue.Enqueue(new QueuedMessage() {
-                Message = message,
-                WebhookUrl = webhookUrl
-            });
-
-            HandleQueue();
-        }
-
-        private void HandleQueue()
+        public void HandleQueue()
         {
             if (_retryCount > 0)
             {
@@ -1325,13 +1304,13 @@ namespace Oxide.Plugins
             }
         }
 
-        private void QueueCooldownDisable()
+        public void QueueCooldownDisable()
         {
             _timerQueueCooldown?.Destroy();
             _timerQueueCooldown = null;
         }
 
-        private void HandleEntity(BaseEntity baseEntity)
+        public void HandleEntity(BaseEntity baseEntity)
         {
             if (!baseEntity.IsValid())
             {
@@ -1462,7 +1441,7 @@ namespace Oxide.Plugins
             }
         }
 
-        private void HandleSupplySignal(BasePlayer player, SupplySignal entity)
+        public void HandleSupplySignal(BasePlayer player, SupplySignal entity)
         {
             if (_configData.SupplyDropSettings.Enabled)
             {
@@ -1477,7 +1456,7 @@ namespace Oxide.Plugins
             }
         }
 
-        private void HandleRaidableBase(Vector3 raidPos, int difficulty, string langKey, BasePlayer owner = null, List<BasePlayer> raiders = null)
+        public void HandleRaidableBase(Vector3 raidPos, int difficulty, string langKey, BasePlayer owner = null, List<BasePlayer> raiders = null)
         {
             if (raidPos == null)
             {
@@ -1521,10 +1500,10 @@ namespace Oxide.Plugins
                         {
                             _sb.Append(", ");
                         }
-                        _sb.Append(raiders[i].displayName);
+                        _sb.Append(ReplaceChars(raiders[i].displayName));
                     }
                     LogToConsole($"{difficultyString} Raidable Base owned by {owner?.displayName} at {GetGridPosition(raidPos)} has been raided by {_sb.ToString()}");
-                    DiscordSendMessage(Lang(langKey, null, GetGridPosition(raidPos), Lang(difficultyString), owner?.displayName, _sb.ToString()), _configData.RaidableBasesSettings.WebhookURL);
+                    DiscordSendMessage(Lang(langKey, null, GetGridPosition(raidPos), Lang(difficultyString), ReplaceChars(owner?.displayName), _sb.ToString()), _configData.RaidableBasesSettings.WebhookURL);
                     break;
                 case LangKeys.Plugin.RaidableBaseEnded:
                 case LangKeys.Plugin.RaidableBaseStarted:
@@ -1534,7 +1513,7 @@ namespace Oxide.Plugins
             }
         }
 
-        private void HandleDangerousTreasures(Vector3 containerPos, string langKey)
+        public void HandleDangerousTreasures(Vector3 containerPos, string langKey)
         {
             if (containerPos == null)
             {
@@ -1547,7 +1526,7 @@ namespace Oxide.Plugins
             DiscordSendMessage(Lang(langKey, null, GetGridPosition(containerPos)), _configData.DangerousTreasuresSettings.WebhookURL);
         }
 
-        private void HandleLog(string logString, string stackTrace, LogType type)
+        public void HandleLog(string logString, string stackTrace, LogType type)
         {
             if (_configData.ErrorSettings.Enabled && type == LogType.Error)
             {
@@ -1568,7 +1547,7 @@ namespace Oxide.Plugins
             }
         }
 
-        private void HandleTeam(RelationshipManager.PlayerTeam team, TeamEventType teamEventType)
+        public void HandleTeam(RelationshipManager.PlayerTeam team, TeamEventType teamEventType)
         {
             _sb.Clear();
 
@@ -1633,7 +1612,7 @@ namespace Oxide.Plugins
             DiscordSendMessage(Lang(LangKeys.Event.Team, null, eventType, _sb.ToString()), _configData.TeamsSettings.WebhookURL);
         }
 
-        private void CacheOilRigsLocation()
+        public void CacheOilRigsLocation()
         {
             foreach (MonumentInfo monument in TerrainMeta.Path.Monuments)
             {
@@ -1654,7 +1633,7 @@ namespace Oxide.Plugins
             }
         }
 
-        private string GetHackableLockedCratePosition(Vector3 position)
+        public string GetHackableLockedCratePosition(Vector3 position)
         {
             if (Vector3.Distance(position, _locationOilRig) < 51f)
             {
@@ -1694,11 +1673,40 @@ namespace Oxide.Plugins
             return GetGridPosition(position);
         }
 
+        private void DiscordSendMessage(string message, string webhookUrl, bool stripTags = false)
+        {
+            webhookUrl = GetWebhookURL(webhookUrl);
+
+            if (string.IsNullOrWhiteSpace(webhookUrl))
+            {
+                PrintError("DiscordSendMessage: webhookUrl is null or empty!");
+                return;
+            }
+
+            if (stripTags)
+            {
+                message = StripRustTags(message);
+            }
+
+            if (string.IsNullOrWhiteSpace(message))
+            {
+                PrintError("DiscordSendMessage: message is null or empty!");
+                return;
+            }
+
+            _queue.Enqueue(new QueuedMessage() {
+                Message = message,
+                WebhookUrl = webhookUrl
+            });
+
+            HandleQueue();
+        }
+
         #endregion Core Methods
 
         #region Helpers
 
-        private void UnsubscribeHooks()
+        public void UnsubscribeHooks()
         {
             Unsubscribe(nameof(OnAdminHammerDisabled));
             Unsubscribe(nameof(OnAdminHammerEnabled));
@@ -1759,7 +1767,7 @@ namespace Oxide.Plugins
             Unsubscribe(nameof(OnVanishReappear));
         }
 
-        private void SubscribeHooks()
+        public void SubscribeHooks()
         {
             if (_configData.AdminHammerSettings.Enabled)
             {
@@ -1954,7 +1962,7 @@ namespace Oxide.Plugins
             }
         }
 
-        private string StripRustTags(string text)
+        public string StripRustTags(string text)
         {
             if (string.IsNullOrEmpty(text))
             {
@@ -1974,7 +1982,7 @@ namespace Oxide.Plugins
             return text;
         }
 
-        private string GetWebhookURL(string url)
+        public string GetWebhookURL(string url)
         {
             if (string.IsNullOrEmpty(url))
             {
@@ -1984,9 +1992,9 @@ namespace Oxide.Plugins
             return url;
         }
 
-        private string GetGridPosition(Vector3 position) => PhoneController.PositionToGridCoord(position);
+        public string GetGridPosition(Vector3 position) => PhoneController.PositionToGridCoord(position);
 
-        private string GetFormattedDurationTime(TimeSpan time, string id = null)
+        public string GetFormattedDurationTime(TimeSpan time, string id = null)
         {
             _sb.Clear();
 
@@ -2010,7 +2018,7 @@ namespace Oxide.Plugins
             return _sb.ToString();
         }
 
-        private void BuildTime(StringBuilder sb, string lang, string playerID, int value)
+        public void BuildTime(StringBuilder sb, string lang, string playerID, int value)
         {
             sb.Append(_configData.GlobalSettings.TagsReplacement);
             sb.Append(value);
@@ -2020,9 +2028,9 @@ namespace Oxide.Plugins
             sb.Append(" ");
         }
 
-        private bool IsPluginLoaded(Plugin plugin) => plugin != null && plugin.IsLoaded;
+        public bool IsPluginLoaded(Plugin plugin) => plugin != null && plugin.IsLoaded;
 
-        private void LogToConsole(string text)
+        public void LogToConsole(string text)
         {
             if (_configData.GlobalSettings.LoggingEnabled)
             {
@@ -2048,7 +2056,7 @@ namespace Oxide.Plugins
         /// </summary>
         /// <param name="url">Webhook url</param>
         /// <param name="message">Message being sent</param>
-        private void DiscordSendMessage(string url, DiscordMessage message)
+        public void DiscordSendMessage(string url, DiscordMessage message)
         {
             webrequest.Enqueue(url, message.ToJson(), DiscordSendMessageCallback, this, RequestMethod.POST, _headers);
         }
@@ -2058,7 +2066,7 @@ namespace Oxide.Plugins
         /// </summary>
         /// <param name="code">HTTP response code</param>
         /// <param name="message">Response message</param>
-        private void DiscordSendMessageCallback(int code, string message)
+        public void DiscordSendMessageCallback(int code, string message)
         {
             switch (code)
             {
@@ -2105,7 +2113,7 @@ namespace Oxide.Plugins
 
         #region Embed Classes
 
-        private class DiscordMessage
+        public class DiscordMessage
         {
             /// <summary>
             /// String only content to be sent
