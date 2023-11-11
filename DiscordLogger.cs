@@ -12,15 +12,14 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Discord Logger", "MON@H", "2.0.15")]
+    [Info("Discord Logger", "MON@H", "2.0.16")]
     [Description("Logs events to Discord channels using webhooks")]
-    class DiscordLogger : RustPlugin
+    public class DiscordLogger : RustPlugin
     {
         #region Variables
 
-        [PluginReference] private Plugin AntiSpam, BetterChatMute, CallHeli, PersonalHeli, UFilter;
+        [PluginReference] private readonly Plugin AntiSpam, BetterChatMute, CallHeli, PersonalHeli, UFilter;
 
-        private readonly Hash<string, string> _countryCodes = new Hash<string, string>();
         private readonly Hash<ulong, CargoShip> _cargoShips = new Hash<ulong, CargoShip>();
         private readonly List<ulong> _listBadCargoShips = new List<ulong>();
         private readonly List<ulong> _listSupplyDrops = new List<ulong>();
@@ -632,7 +631,7 @@ namespace Oxide.Plugins
             DiscordSendMessage(Lang(LangKeys.Plugin.Duel, null, ReplaceChars(attacker.displayName), ReplaceChars(victim.displayName)), _configData.DuelSettings.WebhookURL);
         }
 
-        private void OnEntitySpawned(BaseHelicopter entity)
+        private void OnEntitySpawned(PatrolHelicopter entity)
         {
             NextTick(() => HandleEntity(entity));
         }
@@ -754,38 +753,7 @@ namespace Oxide.Plugins
 
                 if (!_configData.GlobalSettings.HideAdmin || !player.IsAdmin)
                 {
-                    StringBuilder sb = new StringBuilder();
-
-                    sb.Append(Lang(LangKeys.Event.PlayerConnected, null, ReplaceChars(player.displayName)));
-
-                    if (player.net.connection.ipaddress.StartsWith("127.")
-                    || player.net.connection.ipaddress.StartsWith("10.")
-                    || player.net.connection.ipaddress.StartsWith("172.16.")
-                    || player.net.connection.ipaddress.StartsWith("192.168."))
-                    {
-                        sb.Append(" :signal_strength:");
-                        DiscordSendMessage(sb.ToString(), _configData.PlayerConnectedSettings.WebhookURL);
-                    }
-                    else
-                    {
-                        string ip = player.net.connection.ipaddress.Split(':')[0];
-                        webrequest.Enqueue($"http://ip-api.com/json/{ip}", null, (code, response) => {
-                            if (code == 200 && response != null)
-                            {
-                                sb.Append(" :flag_");
-                                string countryCode = _countryCodes[ip];
-                                if (string.IsNullOrEmpty(countryCode))
-                                {
-                                    countryCode = JsonConvert.DeserializeObject<Response>(response).CountryCode.ToLower();
-                                    _countryCodes[ip] = countryCode;
-                                }
-                                sb.Append(countryCode);
-                                sb.Append(":");
-                            }
-
-                            DiscordSendMessage(sb.ToString(), _configData.PlayerConnectedSettings.WebhookURL);
-                        }, this, RequestMethod.GET);
-                    }
+                    DiscordSendMessage(Lang(LangKeys.Event.PlayerConnected, null, ReplaceChars(player.displayName)), _configData.PlayerConnectedSettings.WebhookURL);
                 }
             }
 
@@ -1319,7 +1287,7 @@ namespace Oxide.Plugins
 
             Vector3 position = baseEntity.transform.position;
 
-            if (baseEntity is BaseHelicopter)
+            if (baseEntity is PatrolHelicopter)
             {
                 _langKey = LangKeys.Event.Helicopter;
                 _eventSettings = _configData.HelicopterSettings;
@@ -1400,7 +1368,7 @@ namespace Oxide.Plugins
 
             if (_eventSettings.Enabled)
             {
-                if (baseEntity is BaseHelicopter)
+                if (baseEntity is PatrolHelicopter)
                 {
                     if (IsPluginLoaded(CallHeli))
                     {
@@ -1428,7 +1396,7 @@ namespace Oxide.Plugins
                         }
                     }
 
-                    LogToConsole("BaseHelicopter spawned at " + GetGridPosition(position));
+                    LogToConsole("PatrolHelicopter spawned at " + GetGridPosition(position));
                 }
 
                 if (baseEntity is HackableLockedCrate)
