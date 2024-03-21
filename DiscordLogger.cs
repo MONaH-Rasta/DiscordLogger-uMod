@@ -12,7 +12,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Discord Logger", "MON@H", "2.0.16")]
+    [Info("Discord Logger", "MON@H", "2.0.17")]
     [Description("Logs events to Discord channels using webhooks")]
     public class DiscordLogger : RustPlugin
     {
@@ -678,16 +678,25 @@ namespace Oxide.Plugins
                 return;
             }
 
-            List<EggHuntEvent.EggHunter> winners = entity.GetTopHunters();
-            string winner;
-            if (winners.Count > 0)
+            List<EggHuntEvent.EggHunter> topHunters = Facepunch.Pool.GetList<EggHuntEvent.EggHunter>();
+            foreach (KeyValuePair<ulong, EggHuntEvent.EggHunter> eggHunter in entity._eggHunters)
             {
-                winner = ReplaceChars(winners[0].displayName);
+                topHunters.Add(eggHunter.Value);
+            }
+
+            topHunters.Sort((EggHuntEvent.EggHunter a, EggHuntEvent.EggHunter b) => b.numEggs.CompareTo(a.numEggs));
+
+            string winner;
+            if (topHunters.Count > 0)
+            {
+                winner = ReplaceChars(topHunters[0].displayName);
             }
             else
             {
                 winner = "No winner";
             }
+
+            Facepunch.Pool.FreeList(ref topHunters);
 
             bool isHalloween = entity is HalloweenHunt;
             if (isHalloween)
