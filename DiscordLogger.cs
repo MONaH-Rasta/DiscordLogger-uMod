@@ -20,11 +20,11 @@ namespace Oxide.Plugins
 
         [PluginReference] private readonly Plugin AntiSpam, BetterChatMute, CallHeli, PersonalHeli, UFilter;
 
-        private readonly Hash<ulong, CargoShip> _cargoShips = new Hash<ulong, CargoShip>();
-        private readonly List<ulong> _listBadCargoShips = new List<ulong>();
-        private readonly List<ulong> _listSupplyDrops = new List<ulong>();
-        private readonly Queue<QueuedMessage> _queue = new Queue<QueuedMessage>();
-        private readonly StringBuilder _sb = new StringBuilder();
+        private readonly Hash<ulong, CargoShip> _cargoShips = new();
+        private readonly List<ulong> _listBadCargoShips = new();
+        private readonly List<ulong> _listSupplyDrops = new();
+        private readonly Queue<QueuedMessage> _queue = new();
+        private readonly StringBuilder _sb = new();
 
         private EventSettings _eventSettings;
         private int _retryCount = 0;
@@ -39,13 +39,15 @@ namespace Oxide.Plugins
         private Vector3 _locationLargeOilRig;
         private Vector3 _locationOilRig;
 
-        private readonly List<Regex> _regexTags = new List<Regex>
+        private readonly List<Regex> _regexTags = new()
+
         {
-            new Regex("<color=.+?>", RegexOptions.Compiled),
-            new Regex("<size=.+?>", RegexOptions.Compiled)
+            new("<color=.+?>", RegexOptions.Compiled),
+            new("<size=.+?>", RegexOptions.Compiled)
         };
 
-        private readonly List<string> _tags = new List<string>
+        private readonly List<string> _tags = new()
+
         {
             "</color>",
             "</size>",
@@ -127,130 +129,130 @@ namespace Oxide.Plugins
         private class ConfigData
         {
             [JsonProperty(PropertyName = "Global settings")]
-            public GlobalSettings GlobalSettings = new GlobalSettings();
+            public GlobalSettings GlobalSettings = new();
 
             [JsonProperty(PropertyName = "Admin Hammer settings")]
-            public EventSettings AdminHammerSettings = new EventSettings();
+            public EventSettings AdminHammerSettings = new();
 
             [JsonProperty(PropertyName = "Admin Radar settings")]
-            public EventSettings AdminRadarSettings = new EventSettings();
+            public EventSettings AdminRadarSettings = new();
 
             [JsonProperty(PropertyName = "Bradley settings")]
-            public EventSettings BradleySettings = new EventSettings();
+            public EventSettings BradleySettings = new();
 
             [JsonProperty(PropertyName = "Cargo Ship settings")]
-            public EventSettings CargoShipSettings = new EventSettings();
+            public EventSettings CargoShipSettings = new();
 
             [JsonProperty(PropertyName = "Cargo Plane settings")]
-            public EventSettings CargoPlaneSettings = new EventSettings();
+            public EventSettings CargoPlaneSettings = new();
 
             [JsonProperty(PropertyName = "Chat settings")]
-            public EventSettings ChatSettings = new EventSettings();
+            public EventSettings ChatSettings = new();
 
             [JsonProperty(PropertyName = "Chat (Team) settings")]
-            public EventSettings ChatTeamSettings = new EventSettings();
+            public EventSettings ChatTeamSettings = new();
 
             [JsonProperty(PropertyName = "CH47 Helicopter settings")]
-            public EventSettings ChinookSettings = new EventSettings();
+            public EventSettings ChinookSettings = new();
 
             [JsonProperty(PropertyName = "Christmas settings")]
-            public EventSettings ChristmasSettings = new EventSettings();
+            public EventSettings ChristmasSettings = new();
 
             [JsonProperty(PropertyName = "Clan settings")]
-            public EventSettings ClanSettings = new EventSettings();
+            public EventSettings ClanSettings = new();
 
             [JsonProperty(PropertyName = "Dangerous Treasures settings")]
-            public EventSettings DangerousTreasuresSettings = new EventSettings();
+            public EventSettings DangerousTreasuresSettings = new();
 
             [JsonProperty(PropertyName = "Duel settings")]
-            public EventSettings DuelSettings = new EventSettings();
+            public EventSettings DuelSettings = new();
 
             [JsonProperty(PropertyName = "Godmode settings")]
-            public EventSettings GodmodeSettings = new EventSettings();
+            public EventSettings GodmodeSettings = new();
 
             [JsonProperty(PropertyName = "Easter settings")]
-            public EventSettings EasterSettings = new EventSettings();
+            public EventSettings EasterSettings = new();
 
             [JsonProperty(PropertyName = "Error settings")]
-            public EventSettings ErrorSettings = new EventSettings();
+            public EventSettings ErrorSettings = new();
 
             [JsonProperty(PropertyName = "Hackable Locked Crate settings")]
-            public EventSettings LockedCrateSettings = new EventSettings();
+            public EventSettings LockedCrateSettings = new();
 
             [JsonProperty(PropertyName = "Halloween settings")]
-            public EventSettings HalloweenSettings = new EventSettings();
+            public EventSettings HalloweenSettings = new();
 
             [JsonProperty(PropertyName = "Helicopter settings")]
-            public EventSettings HelicopterSettings = new EventSettings();
+            public EventSettings HelicopterSettings = new();
 
             [JsonProperty(PropertyName = "NTeleportation settings")]
-            public EventSettings NTeleportationSettings = new EventSettings();
+            public EventSettings NTeleportationSettings = new();
 
             [JsonProperty(PropertyName = "Permissions settings")]
-            public EventSettings PermissionsSettings = new EventSettings();
+            public EventSettings PermissionsSettings = new();
 
             [JsonProperty(PropertyName = "Player death settings")]
-            public EventSettings PlayerDeathSettings = new EventSettings();
+            public EventSettings PlayerDeathSettings = new();
 
             [JsonProperty(PropertyName = "Player DeathNotes settings")]
-            public EventSettings PlayerDeathNotesSettings = new EventSettings();
+            public EventSettings PlayerDeathNotesSettings = new();
 
             [JsonProperty(PropertyName = "Player connect advanced info settings")]
-            public EventSettings PlayerConnectedInfoSettings = new EventSettings();
+            public EventSettings PlayerConnectedInfoSettings = new();
 
             [JsonProperty(PropertyName = "Player connect settings")]
-            public EventSettings PlayerConnectedSettings = new EventSettings();
+            public EventSettings PlayerConnectedSettings = new();
 
             [JsonProperty(PropertyName = "Player disconnect settings")]
-            public EventSettings PlayerDisconnectedSettings = new EventSettings();
+            public EventSettings PlayerDisconnectedSettings = new();
 
             [JsonProperty(PropertyName = "Player Respawned settings")]
-            public EventSettings PlayerRespawnedSettings = new EventSettings();
+            public EventSettings PlayerRespawnedSettings = new();
 
             [JsonProperty(PropertyName = "Private Messages settings")]
-            public EventSettings PrivateMessagesSettings = new EventSettings();
+            public EventSettings PrivateMessagesSettings = new();
 
             [JsonProperty(PropertyName = "Raidable Bases settings")]
-            public EventSettings RaidableBasesSettings = new EventSettings();
+            public EventSettings RaidableBasesSettings = new();
 
             [JsonProperty(PropertyName = "Rcon command settings")]
-            public EventSettings RconCommandSettings = new EventSettings();
+            public EventSettings RconCommandSettings = new();
 
             [JsonProperty(PropertyName = "Rcon connection settings")]
-            public EventSettings RconConnectionSettings = new EventSettings();
+            public EventSettings RconConnectionSettings = new();
 
             [JsonProperty(PropertyName = "Rust Kits settings")]
-            public EventSettings RustKitsSettings = new EventSettings();
+            public EventSettings RustKitsSettings = new();
 
             [JsonProperty(PropertyName = "SantaSleigh settings")]
-            public EventSettings SantaSleighSettings = new EventSettings();
+            public EventSettings SantaSleighSettings = new();
 
             [JsonProperty(PropertyName = "Server messages settings")]
-            public EventSettings ServerMessagesSettings = new EventSettings();
+            public EventSettings ServerMessagesSettings = new();
 
             [JsonProperty(PropertyName = "Server state settings")]
-            public EventSettings ServerStateSettings = new EventSettings();
+            public EventSettings ServerStateSettings = new();
 
             [JsonProperty(PropertyName = "Supply Drop settings")]
-            public EventSettings SupplyDropSettings = new EventSettings();
+            public EventSettings SupplyDropSettings = new();
 
             [JsonProperty(PropertyName = "Teams settings")]
-            public EventSettings TeamsSettings = new EventSettings();
+            public EventSettings TeamsSettings = new();
 
             [JsonProperty(PropertyName = "User Banned settings")]
-            public EventSettings UserBannedSettings = new EventSettings();
+            public EventSettings UserBannedSettings = new();
 
             [JsonProperty(PropertyName = "User Kicked settings")]
-            public EventSettings UserKickedSettings = new EventSettings();
+            public EventSettings UserKickedSettings = new();
 
             [JsonProperty(PropertyName = "User Muted settings")]
-            public EventSettings UserMutedSettings = new EventSettings();
+            public EventSettings UserMutedSettings = new();
 
             [JsonProperty(PropertyName = "User Name Updated settings")]
-            public EventSettings UserNameUpdateSettings = new EventSettings();
+            public EventSettings UserNameUpdateSettings = new();
 
             [JsonProperty(PropertyName = "Vanish settings")]
-            public EventSettings VanishSettings = new EventSettings();
+            public EventSettings VanishSettings = new();
         }
 
         private class GlobalSettings
@@ -283,7 +285,7 @@ namespace Oxide.Plugins
             public string DefaultWebhookURL = string.Empty;
 
             [JsonProperty(PropertyName = "RCON command blacklist", ObjectCreationHandling = ObjectCreationHandling.Replace)]
-            public List<string> RCONCommandBlacklist = new List<string>()
+            public List<string> RCONCommandBlacklist = new()
             {
                 "playerlist",
                 "status"
@@ -322,7 +324,7 @@ namespace Oxide.Plugins
         protected override void LoadDefaultConfig()
         {
             PrintWarning("Creating a new configuration file");
-            _configData = new ConfigData();
+            _configData = new();
         }
 
         protected override void SaveConfig() => Config.WriteObject(_configData);
@@ -454,7 +456,7 @@ namespace Oxide.Plugins
 
         protected override void LoadDefaultMessages()
         {
-            lang.RegisterMessages(new Dictionary<string, string>
+            lang.RegisterMessages(new()
             {
                 [LangKeys.Event.Bradley] = ":dagger: {time} Bradley spawned `{0}`",
                 [LangKeys.Event.CargoPlane] = ":airplane: {time} Cargo Plane incoming `{0}`",
@@ -830,7 +832,7 @@ namespace Oxide.Plugins
 
                 foreach (string profanity in _profanities)
                 {
-                    _sb.Replace(profanity, new string('＊', profanity.Length));
+                    _sb.Replace(profanity, new('＊', profanity.Length));
                 }
 
                 message = _sb.ToString();
@@ -1230,7 +1232,7 @@ namespace Oxide.Plugins
 
                     _timerQueueCooldown = timer.Once(timeout, () =>
                     {
-                        DiscordSendMessage(_queuedMessage.WebhookUrl, new DiscordMessage(_queuedMessage.Message));
+                        DiscordSendMessage(_queuedMessage.WebhookUrl, new(_queuedMessage.Message));
 
                         QueueCooldownDisable();
 
@@ -1249,7 +1251,7 @@ namespace Oxide.Plugins
 
                 if (_queuedMessage.Message.Length > 1990)
                 {
-                    _queuedMessage.Message = $"{_queuedMessage.Message.Substring(0, 1990)}\n```";
+                    _queuedMessage.Message = $"{_queuedMessage.Message[..1990]}\n```";
                 }
 
                 _sb.AppendLine(_queuedMessage.Message);
@@ -1270,7 +1272,7 @@ namespace Oxide.Plugins
 
                 _queuedMessage.Message = _sb.ToString();
 
-                DiscordSendMessage(_queuedMessage.WebhookUrl, new DiscordMessage(_queuedMessage.Message));
+                DiscordSendMessage(_queuedMessage.WebhookUrl, new(_queuedMessage.Message));
 
                 _timerQueue = timer.Once(_configData.GlobalSettings.QueueInterval, () => {
                     _timerQueue?.Destroy();
@@ -1671,7 +1673,7 @@ namespace Oxide.Plugins
                 return;
             }
 
-            _queue.Enqueue(new QueuedMessage() {
+            _queue.Enqueue(new() {
                 Message = message,
                 WebhookUrl = webhookUrl
             });
@@ -2023,7 +2025,7 @@ namespace Oxide.Plugins
         /// <summary>
         /// Headers when sending an embeded message
         /// </summary>
-        private readonly Dictionary<string, string> _headers = new Dictionary<string, string>()
+        private readonly Dictionary<string, string> _headers = new()
         {
             {"Content-Type", "application/json"}
         };
