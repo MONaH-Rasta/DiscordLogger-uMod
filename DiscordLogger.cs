@@ -678,7 +678,7 @@ namespace Oxide.Plugins
                 return;
             }
 
-            List<EggHuntEvent.EggHunter> topHunters = Facepunch.Pool.GetList<EggHuntEvent.EggHunter>();
+            List<EggHuntEvent.EggHunter> topHunters = Facepunch.Pool.Get<List<EggHuntEvent.EggHunter>>();
             foreach (KeyValuePair<ulong, EggHuntEvent.EggHunter> eggHunter in entity._eggHunters)
             {
                 topHunters.Add(eggHunter.Value);
@@ -696,7 +696,7 @@ namespace Oxide.Plugins
                 winner = "No winner";
             }
 
-            Facepunch.Pool.FreeList(ref topHunters);
+            Facepunch.Pool.FreeUnmanaged(ref topHunters);
 
             bool isHalloween = entity is HalloweenHunt;
             if (isHalloween)
