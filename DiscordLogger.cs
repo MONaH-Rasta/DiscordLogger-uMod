@@ -12,7 +12,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Discord Logger", "MON@H", "2.0.17")]
+    [Info("Discord Logger", "MON@H", "2.0.18")]
     [Description("Logs events to Discord channels using webhooks")]
     public class DiscordLogger : RustPlugin
     {
