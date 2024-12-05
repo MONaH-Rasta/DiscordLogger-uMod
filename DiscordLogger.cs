@@ -1971,7 +1971,7 @@ namespace Oxide.Plugins
             return url;
         }
 
-        public string GetGridPosition(Vector3 position) => PhoneController.PositionToGridCoord(position);
+        public string GetGridPosition(Vector3 position) => MapHelper.PositionToString(position);
 
         public string GetFormattedDurationTime(TimeSpan time, string id = null)
         {
